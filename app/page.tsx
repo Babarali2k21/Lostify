@@ -1,11 +1,18 @@
 'use client';
 
+import { useState } from 'react';
+import { SearchBar } from '../components/SearchBar';
 import { Button } from '../components/button';
 import { PlusCircle, Package } from 'lucide-react';
 
+
 export default function Home() {
-  
-  
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    console.log('Searching for:', query);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -17,11 +24,13 @@ export default function Home() {
               <Package className="h-8 w-8 text-blue-600" />
               <h1 className="text-blue-600">Lost & Found</h1>
             </div>
-            <Button className="gap-2" onClick={() => setReportDialogOpen(true)}>
+            <Button className="gap-2">
               <PlusCircle className="h-5 w-5" />
               Report Item
             </Button>
           </div>
+
+          <SearchBar onSearch={handleSearch} />
         </div>
       </header>
 
