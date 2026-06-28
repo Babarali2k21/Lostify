@@ -1,0 +1,196 @@
+{
+  "Comment": "Lostify Claim & Recovery Saga with Notification steps",
+  "StartAt": "CreateClaim",
+  "States": {
+    "CreateClaim": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-create-claim",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "claimId.$": "$.Payload.claimId",
+        "itemId.$": "$.Payload.itemId",
+        "claimantUserId.$": "$.Payload.claimantUserId",
+        "claimStatus.$": "$.Payload.claimStatus"
+      },
+      "ResultPath": "$.claim",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "ReserveItem"
+    },
+
+    "ReserveItem": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-reserve-item",
+        "Payload": {
+          "claimId.$": "$.claim.claimId",
+          "itemId.$": "$.claim.itemId",
+          "matchedItemId.$": "$.matchedItemId"
+        }
+      },
+      "ResultSelector": {
+        "itemId.$": "$.Payload.itemId",
+        "itemStatus.$": "$.Payload.itemStatus",
+        "matchedItemId.$": "$.Payload.matchedItemId"
+      },
+      "ResultPath": "$.item",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "NotifyClaimCreated"
+    },
+
+    "NotifyClaimCreated": {
+      "Type": "Task",
+      "Comment": "Notification Service — ClaimCreated event",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-send-notification",
+        "Payload": {
+          "eventType": "ClaimCreated",
+          "payload": {
+            "claimId.$": "$.claim.claimId",
+            "itemId.$": "$.claim.itemId",
+            "claimantUserId.$": "$.claim.claimantUserId"
+          }
+        }
+      },
+      "ResultPath": "$.lastNotification",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "AwaitDecision"
+    },
+
+    "AwaitDecision": {
+      "Type": "Choice",
+      "Comment": "Branch on owner decision: APPROVED or REJECTED",
+      "Choices": [
+        { "Variable": "$.decision", "StringEquals": "APPROVED", "Next": "RecoverItem" },
+        { "Variable": "$.decision", "StringEquals": "REJECTED", "Next": "ReleaseItem" }
+      ],
+      "Default": "SagaFailed"
+    },
+
+    "RecoverItem": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-recover-item",
+        "Payload": {
+          "claimId.$": "$.claim.claimId",
+          "itemId.$": "$.item.itemId",
+          "matchedItemId.$": "$.item.matchedItemId",
+          "claimantUserId.$": "$.claim.claimantUserId"
+        }
+      },
+      "ResultSelector": {
+        "itemId.$": "$.Payload.itemId",
+        "itemStatus.$": "$.Payload.itemStatus",
+        "claimId.$": "$.Payload.claimId",
+        "claimStatus.$": "$.Payload.claimStatus",
+        "sagaOutcome.$": "$.Payload.sagaOutcome"
+      },
+      "ResultPath": "$.result",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "NotifyClaimApproved"
+    },
+
+    "NotifyClaimApproved": {
+      "Type": "Task",
+      "Comment": "Notification Service — ClaimApproved event",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-send-notification",
+        "Payload": {
+          "eventType": "ClaimApproved",
+          "payload": {
+            "claimId.$": "$.claim.claimId",
+            "itemId.$": "$.item.itemId"
+          }
+        }
+      },
+      "ResultPath": "$.lastNotification",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "NotifyItemRecovered"
+    },
+
+    "NotifyItemRecovered": {
+      "Type": "Task",
+      "Comment": "Notification Service — ItemRecovered event",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-send-notification",
+        "Payload": {
+          "eventType": "ItemRecovered",
+          "payload": {
+            "itemId.$": "$.item.itemId",
+            "claimId.$": "$.claim.claimId",
+            "recoveredBy.$": "$.claim.claimantUserId"
+          }
+        }
+      },
+      "ResultPath": "$.lastNotification",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "SagaSucceeded"
+    },
+
+    "ReleaseItem": {
+      "Type": "Task",
+      "Comment": "Compensation — RESERVED → MATCHED",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-release-item",
+        "Payload": {
+          "claimId.$": "$.claim.claimId",
+          "itemId.$": "$.item.itemId",
+          "matchedItemId.$": "$.item.matchedItemId"
+        }
+      },
+      "ResultSelector": {
+        "itemId.$": "$.Payload.itemId",
+        "itemStatus.$": "$.Payload.itemStatus",
+        "claimId.$": "$.Payload.claimId",
+        "claimStatus.$": "$.Payload.claimStatus",
+        "sagaOutcome.$": "$.Payload.sagaOutcome"
+      },
+      "ResultPath": "$.result",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "NotifyClaimRejected"
+    },
+
+    "NotifyClaimRejected": {
+      "Type": "Task",
+      "Comment": "Notification Service — ClaimRejected event (compensation)",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lostify-send-notification",
+        "Payload": {
+          "eventType": "ClaimRejected",
+          "payload": {
+            "claimId.$": "$.claim.claimId",
+            "itemId.$": "$.item.itemId"
+          }
+        }
+      },
+      "ResultPath": "$.lastNotification",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "SagaFailed" }],
+      "Next": "SagaCompensated"
+    },
+
+    "SagaSucceeded": {
+      "Type": "Succeed",
+      "Comment": "Happy path — RECOVERED + notifications sent"
+    },
+
+    "SagaCompensated": {
+      "Type": "Succeed",
+      "Comment": "Compensation path — MATCHED + rejection notification sent"
+    },
+
+    "SagaFailed": {
+      "Type": "Fail",
+      "Error": "SagaExecutionFailed",
+      "Cause": "Saga failed or invalid decision"
+    }
+  }
+}
