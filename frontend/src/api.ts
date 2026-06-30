@@ -62,6 +62,17 @@ export interface ProcessedEvent {
   processedAt: string;
 }
 
+export interface SagaStatus {
+  sagaName: string;
+  sagaState: "AWAITING_DECISION" | "COMPLETED" | "COMPENSATED";
+  claimId: number;
+  claimStatus: string;
+  itemId: number;
+  itemStatus: string;
+  matchedItemId: number | null;
+  notifications: string[];
+}
+
 export const api = {
   register: (email: string, username: string, password: string) =>
     request<{ id: number; username: string }>(`${USER_API}/register`, {
@@ -117,4 +128,7 @@ export const api = {
     request<{ id: number; status: string; claimant_user_id: number }[]>(
       `${ITEM_API}/items/${itemId}/claims`
     ),
+
+  getSagaStatus: (claimId: number) =>
+    request<SagaStatus>(`${ITEM_API}/claims/${claimId}/saga`, {}, true),
 };

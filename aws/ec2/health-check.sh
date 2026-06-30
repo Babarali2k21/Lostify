@@ -3,23 +3,24 @@
 set -euo pipefail
 
 HOST="${1:-localhost}"
-BASE="http://${HOST}"
+PORT="${FRONTEND_PORT:-3001}"
+BASE="http://${HOST}:${PORT}"
 
-echo "=== Lostify Health Check (${HOST}) ==="
+echo "=== Lostify Health Check (${BASE}) ==="
 
-check() {
-  local name=$1 port=$2
-  if curl -sf "${BASE}:${port}/health" > /dev/null; then
-    echo "✅ ${name} (:${port})"
+check_proxy() {
+  local name=$1 path=$2
+  if curl -sf "${BASE}${path}/health" > /dev/null; then
+    echo "✅ ${name} (${path})"
   else
-    echo "❌ ${name} (:${port})"
+    echo "❌ ${name} (${path})"
     return 1
   fi
 }
 
-check "user-service" 8001
-check "item-service" 8002
-check "notification-service" 8003
+check_proxy "user-service" "/api/user"
+check_proxy "item-service" "/api/item"
+check_proxy "notification-service" "/api/notif"
 
 echo ""
-echo "All services healthy."
+echo "All services healthy via frontend proxy."
