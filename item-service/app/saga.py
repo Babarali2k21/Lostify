@@ -148,7 +148,25 @@ class ClaimRecoverySaga:
             "itemStatus": item.status.value,
             "matchedItemId": item.matched_item_id,
             "notifications": _notifications_for(claim, item),
+            "steps": _steps_for(claim),
         }
+
+
+def _steps_for(claim: Claim) -> list[str]:
+    """Saga steps completed or in progress for this claim."""
+    base = ["CreateClaim", "ReserveItem", "NotifyClaimCreated"]
+    if claim.status == ClaimStatus.PENDING:
+        return base + ["AwaitingDecision"]
+    if claim.status == ClaimStatus.APPROVED:
+        return base + [
+            "ApproveClaim",
+            "RecoverItem",
+            "NotifyClaimApproved",
+            "NotifyItemRecovered",
+        ]
+    if claim.status == ClaimStatus.REJECTED:
+        return base + ["RejectClaim", "CompensateRelease", "NotifyClaimRejected"]
+    return base
 
 
 def _notifications_for(claim: Claim, item: Item) -> list[str]:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, clearAuth, getUser, Item, ProcessedEvent, setAuth, USER_API } from "./api";
+import { api, clearAuth, getUser, Item, ProcessedEvent, SagaStatus, setAuth, USER_API } from "./api";
 
 type View = "login" | "dashboard";
 
@@ -11,6 +11,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeSaga, setActiveSaga] = useState<SagaStatus | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -22,6 +23,22 @@ export default function App() {
       setEvents(eventList.slice(0, 15));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
+    }
+  }, []);
+
+  const syncSaga = useCallback(async (claimId: number) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const saga = await api.getSagaStatus(claimId);
+        setActiveSaga(saga);
+        const eventList = await api.listEvents();
+        setEvents(eventList.slice(0, 15));
+      } catch {
+        /* saga may not be ready on first tick */
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
     }
   }, []);
 
@@ -54,6 +71,10 @@ export default function App() {
 
       {error && <div className="error" onClick={() => setError("")}>{error}</div>}
       {message && <div className="success-msg" onClick={() => setMessage("")}>{message}</div>}
+
+      {activeSaga && (
+        <SagaPanel saga={activeSaga} onClose={() => setActiveSaga(null)} />
+      )}
 
       <div className="grid-2">
         <CreateItemForm
@@ -104,6 +125,7 @@ export default function App() {
                   const claim = await api.submitClaim(item.id);
                   setMessage(`Claim #${claim.id} submitted — item reserved`);
                   await refresh();
+                  await syncSaga(claim.id);
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Claim failed");
                 } finally {
@@ -117,6 +139,7 @@ export default function App() {
                   await api.approveClaim(claimId);
                   setMessage("Claim approved — item recovered!");
                   await refresh();
+                  await syncSaga(claimId);
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Approve failed");
                 } finally {
@@ -130,8 +153,20 @@ export default function App() {
                   await api.rejectClaim(claimId);
                   setMessage("Claim rejected — compensation applied");
                   await refresh();
+                  await syncSaga(claimId);
                 } catch (e) {
                   setError(e instanceof Error ? e.message : "Reject failed");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              onViewSaga={async (claimId) => {
+                setLoading(true);
+                setError("");
+                try {
+                  await syncSaga(claimId);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Failed to load saga");
                 } finally {
                   setLoading(false);
                 }
@@ -248,6 +283,56 @@ function CreateItemForm({
   );
 }
 
+function SagaPanel({ saga, onClose }: { saga: SagaStatus; onClose: () => void }) {
+  const stateClass =
+    saga.sagaState === "COMPLETED"
+      ? "saga-completed"
+      : saga.sagaState === "COMPENSATED"
+        ? "saga-compensated"
+        : "saga-awaiting";
+
+  return (
+    <div className={`card saga-panel ${stateClass}`}>
+      <div className="saga-header">
+        <h2>Claim Recovery Saga</h2>
+        <button className="btn-ghost saga-close" onClick={onClose}>Dismiss</button>
+      </div>
+      <div className="saga-meta">
+        <span className={`badge saga-state-badge ${stateClass}`}>{saga.sagaState}</span>
+        <span>Claim #{saga.claimId}</span>
+        <span>Item #{saga.itemId} · {saga.itemStatus}</span>
+        {saga.matchedItemId && <span>Matched #{saga.matchedItemId}</span>}
+      </div>
+      <div className="saga-steps">
+        {saga.steps.map((step, i) => {
+          const isLast = i === saga.steps.length - 1;
+          const isPending = step === "AwaitingDecision";
+          const done = !isPending && (saga.sagaState !== "AWAITING_DECISION" || !isLast);
+          return (
+            <div
+              key={`${step}-${i}`}
+              className={`saga-step ${done ? "done" : isPending ? "pending" : "active"}`}
+            >
+              <span className="saga-step-dot">{done ? "✓" : isPending ? "…" : "●"}</span>
+              <span>{step}</span>
+            </div>
+          );
+        })}
+      </div>
+      {saga.notifications.length > 0 && (
+        <div className="saga-notifications">
+          <strong>Notifications emitted</strong>
+          <div className="saga-notif-tags">
+            {saga.notifications.map((n) => (
+              <span key={n} className="badge badge-matched">{n}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemCard({
   item,
   myId,
@@ -255,6 +340,7 @@ function ItemCard({
   onClaim,
   onApprove,
   onReject,
+  onViewSaga,
 }: {
   item: Item;
   myId?: number;
@@ -262,21 +348,29 @@ function ItemCard({
   onClaim: () => void;
   onApprove: (claimId: number) => void;
   onReject: (claimId: number) => void;
+  onViewSaga: (claimId: number) => void;
 }) {
   const [pendingClaimId, setPendingClaimId] = useState<number | null>(null);
   const isOwner = item.owner_user_id === myId;
   const canClaim = item.status === "MATCHED" && !isOwner;
 
   useEffect(() => {
-    if (isOwner && item.status === "RESERVED") {
+    if (item.status === "RESERVED" || item.status === "RECOVERED") {
       api.listItemClaims(item.id).then((claims) => {
-        const pending = claims.find((c) => c.status === "PENDING");
-        setPendingClaimId(pending?.id ?? null);
+        if (isOwner) {
+          const claim = claims.find((c) => c.status === "PENDING") ?? claims[0];
+          setPendingClaimId(claim?.id ?? null);
+        } else if (myId) {
+          const mine = claims.find((c) => c.claimant_user_id === myId);
+          setPendingClaimId(mine?.id ?? null);
+        } else {
+          setPendingClaimId(null);
+        }
       }).catch(() => setPendingClaimId(null));
     } else {
       setPendingClaimId(null);
     }
-  }, [item.id, item.status, isOwner]);
+  }, [item.id, item.status, isOwner, myId]);
 
   return (
     <div className="item-row">
@@ -307,6 +401,11 @@ function ItemCard({
               Reject claim
             </button>
           </>
+        )}
+        {(item.status === "RESERVED" || item.status === "RECOVERED") && pendingClaimId && (
+          <button className="btn-ghost" disabled={loading} onClick={() => onViewSaga(pendingClaimId)}>
+            View saga
+          </button>
         )}
       </div>
     </div>

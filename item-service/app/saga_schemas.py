@@ -10,3 +10,4 @@ class SagaStatusResponse(BaseModel):
     itemStatus: str
     matchedItemId: int | None
     notifications: list[str] = []
+    steps: list[str] = []

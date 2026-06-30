@@ -71,6 +71,7 @@ export interface SagaStatus {
   itemStatus: string;
   matchedItemId: number | null;
   notifications: string[];
+  steps: string[];
 }
 
 export const api = {
