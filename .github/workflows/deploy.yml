@@ -50,6 +50,16 @@ jobs:
             echo "::error::Missing GitHub secrets. Add EC2_HOST, EC2_USER, EC2_SSH_KEY in repo Settings → Secrets."
             exit 1
           fi
+          EC2_HOST="$(echo "$EC2_HOST" | tr -d '[:space:]' | sed 's#^https\?://##' | sed 's#/.*##')"
+          if ! echo "$EC2_HOST" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$|^[a-zA-Z0-9.-]+$'; then
+            echo "::error::EC2_HOST must be an IP or hostname only (example: 18.196.1.42). No http:// prefix."
+            exit 1
+          fi
+          if ! echo "$EC2_SSH_KEY" | grep -q "BEGIN.*PRIVATE KEY"; then
+            echo "::error::EC2_SSH_KEY must include the full PEM file (-----BEGIN ... PRIVATE KEY-----)."
+            exit 1
+          fi
+          echo "EC2_HOST=$EC2_HOST" >> "$GITHUB_ENV"
           echo "Deploying to $EC2_USER@$EC2_HOST"
 
       - name: Checkout
@@ -57,29 +67,31 @@ jobs:
 
       - name: Configure SSH
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Do not fail the job if keyscan is blocked by security group
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Test SSH connection
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=15 \
-            "$EC2_USER@$EC2_HOST" "echo SSH OK && docker --version"
+          ssh -vvv -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=accept-new \
+            "$EC2_USER@$EC2_HOST" "echo SSH_OK && docker --version"
 
       - name: Sync files to EC2
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           rsync -avz \
-            -e "ssh -i ~/.ssh/deploy_key -o BatchMode=yes" \
+            -e "ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
             --exclude '.git' \
             --exclude '__pycache__' \
             --exclude '.pytest_cache' \
@@ -90,10 +102,9 @@ jobs:
 
       - name: Deploy on EC2
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$EC2_USER@$EC2_HOST" << 'ENDSSH'
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" << 'ENDSSH'
             set -e
             cd ~/Lostify
             chmod +x aws/ec2/*.sh
@@ -109,15 +120,12 @@ jobs:
 
       - name: Health check
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" \
             "curl -sf http://localhost:3001/api/user/health && curl -sf http://localhost:3001/api/item/health && curl -sf http://localhost:3001/api/notif/health"
 
       - name: Deployment summary
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           echo "### Deployed to EC2" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend:** http://${EC2_HOST}:3001" >> $GITHUB_STEP_SUMMARY
