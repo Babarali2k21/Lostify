@@ -14,6 +14,7 @@ from .models import Claim, Item, ItemType
 from .schemas import ClaimCreate, ClaimResponse, ItemCreate, ItemResponse
 from .saga import ClaimRecoverySaga
 from .saga_schemas import SagaStatusResponse
+from .step_functions import trigger_claim_saga
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,13 @@ def submit_claim(
         result.claim.id,
         [s.value for s in result.steps],
     )
+    trigger_claim_saga(
+        claim_id=result.claim.id,
+        item_id=result.item.id,
+        claimant_user_id=user_id,
+        matched_item_id=result.item.matched_item_id,
+        decision="PENDING",
+    )
     return result.claim
 
 
@@ -157,6 +165,13 @@ def approve_claim(
         [s.value for s in result.steps],
         result.outcome,
     )
+    trigger_claim_saga(
+        claim_id=claim.id,
+        item_id=item.id,
+        claimant_user_id=claim.claimant_user_id,
+        matched_item_id=item.matched_item_id,
+        decision="APPROVED",
+    )
     return result.claim
 
 
@@ -185,6 +200,13 @@ def reject_claim(
         claim.id,
         [s.value for s in result.steps],
         result.outcome,
+    )
+    trigger_claim_saga(
+        claim_id=claim.id,
+        item_id=item.id,
+        claimant_user_id=claim.claimant_user_id,
+        matched_item_id=item.matched_item_id,
+        decision="REJECTED",
     )
     return result.claim
 

@@ -35,6 +35,10 @@ services:
       DATABASE_URL: sqlite:////data/item.db
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      STEP_FUNCTIONS_STATE_MACHINE_ARN: ${STEP_FUNCTIONS_STATE_MACHINE_ARN:-}
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
       - item-data:/data
     depends_on:

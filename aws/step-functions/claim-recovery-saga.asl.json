@@ -63,12 +63,18 @@
 
     "AwaitDecision": {
       "Type": "Choice",
-      "Comment": "Branch on owner decision: APPROVED or REJECTED",
+      "Comment": "Branch on owner decision: PENDING (submit), APPROVED, or REJECTED",
       "Choices": [
+        { "Variable": "$.decision", "StringEquals": "PENDING", "Next": "AwaitingOwnerDecision" },
         { "Variable": "$.decision", "StringEquals": "APPROVED", "Next": "RecoverItem" },
         { "Variable": "$.decision", "StringEquals": "REJECTED", "Next": "ReleaseItem" }
       ],
       "Default": "SagaFailed"
+    },
+
+    "AwaitingOwnerDecision": {
+      "Type": "Succeed",
+      "Comment": "Claim submitted via app — owner approve/reject triggers a new execution"
     },
 
     "RecoverItem": {
