@@ -114,6 +114,7 @@ jobs:
             if [ -n "$PUBLIC_IP" ] && ! grep -q "^PUBLIC_API_URL=" .env; then
               echo "PUBLIC_API_URL=http://$PUBLIC_IP" >> .env
             fi
+            docker compose -f docker-compose.prod.yml down --remove-orphans || true
             docker compose -f docker-compose.prod.yml up --build -d
             sleep 12
           ENDSSH

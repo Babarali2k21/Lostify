@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, clearAuth, getUser, Item, ProcessedEvent, SagaStatus, setAuth, USER_API } from "./api";
+import { api, clearAuth, getUser, Item, ProcessedEvent, SagaStatus, setAuth } from "./api";
 
 type View = "login" | "dashboard";
 
@@ -198,9 +198,8 @@ function LoginScreen({ onSuccess }: { onSuccess: (user: { id: number; username: 
         await api.register(email, username, password);
       }
       const { access_token } = await api.login(username, password);
-      const me = await fetch(`${USER_API}/me`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      }).then((r) => r.json());
+      setAuth(access_token, { id: 0, username });
+      const me = await api.me();
       onSuccess({ id: me.id, username: me.username }, access_token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Authentication failed");
