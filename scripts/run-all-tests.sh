@@ -12,17 +12,30 @@ echo "=========================================="
 pip install -q -r tests/requirements.txt
 export PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service"
 
+wait_for_stack() {
+  for _ in $(seq 1 30); do
+    if curl -sf http://localhost:8001/health >/dev/null 2>&1 \
+      && curl -sf http://localhost:8002/health >/dev/null 2>&1 \
+      && curl -sf http://localhost:8003/health >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 echo -e "\n── Unit tests (no Docker required) ──"
-pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py -v --tb=short
+pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py tests/test_step_functions.py -v --tb=short
 
 STACK_UP=false
-if curl -sf http://localhost:8001/health >/dev/null 2>&1; then
+if wait_for_stack; then
   STACK_UP=true
   echo -e "\n── Integration + fault tolerance + latency (Docker running) ──"
   pytest tests/test_integration.py tests/test_fault_tolerance.py tests/test_event_latency.py -v --tb=short
 else
-  echo -e "\n── Skipping integration tests (Docker not running) ──"
-  echo "   Start stack: docker compose up -d"
+  echo -e "\n── Skipping integration tests (services not healthy yet) ──"
+  echo "   Wait a few seconds, then: docker compose up -d"
+  echo "   Or rebuild: docker compose up --build -d"
 fi
 
 echo -e "\n── Event latency report ──"

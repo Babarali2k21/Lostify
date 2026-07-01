@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 
 import httpx
@@ -10,15 +11,22 @@ NOTIF_URL = os.getenv("NOTIF_URL", "http://localhost:8003")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
-def services_available() -> bool:
-    try:
-        with httpx.Client(timeout=2.0) as client:
-            for url in (ITEM_URL, CLAIM_URL, NOTIF_URL):
-                if client.get(f"{url}/health").status_code != 200:
-                    return False
-        return True
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return False
+def services_available(retries: int = 3, delay_s: float = 1.0) -> bool:
+    """Return True when all three microservices respond on /health."""
+    for attempt in range(retries):
+        try:
+            with httpx.Client(timeout=3.0) as client:
+                for url in (ITEM_URL, CLAIM_URL, NOTIF_URL):
+                    response = client.get(f"{url}/health")
+                    if response.status_code != 200:
+                        break
+                else:
+                    return True
+        except (httpx.HTTPError, OSError):
+            pass
+        if attempt + 1 < retries:
+            time.sleep(delay_s)
+    return False
 
 
 requires_services = pytest.mark.skipif(
