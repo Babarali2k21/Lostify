@@ -11,3 +11,6 @@ class SagaStatusResponse(BaseModel):
     matchedItemId: int | None
     notifications: list[str] = []
     steps: list[str] = []
+    awsSynced: bool = False
+    awsExecutionArn: str | None = None
+    awsExecutionStatus: str = "DISABLED"

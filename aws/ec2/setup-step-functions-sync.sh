@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# One-time EC2 setup so Docker item-service can call Step Functions (IAM via metadata).
+set -euo pipefail
+
+echo "=== Lostify Step Functions sync setup ==="
+
+INSTANCE_ID=$(curl -sf http://169.254.169.254/latest/meta-data/instance-id)
+echo "Instance: $INSTANCE_ID"
+
+if command -v aws >/dev/null 2>&1; then
+  echo "Setting metadata hop limit to 2 (required for Docker + IAM role)..."
+  aws ec2 modify-instance-metadata-options \
+    --instance-id "$INSTANCE_ID" \
+    --http-put-response-hop-limit 2 \
+    --http-endpoint enabled
+  echo "✓ Hop limit updated"
+else
+  echo "⚠️  aws CLI not found. In EC2 console:"
+  echo "   Actions → Instance settings → Modify instance metadata options"
+  echo "   Set Metadata response hop limit = 2"
+fi
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+fi
+
+if ! grep -q '^STEP_FUNCTIONS_STATE_MACHINE_ARN=' .env; then
+  echo ""
+  echo "Add to .env:"
+  echo "STEP_FUNCTIONS_STATE_MACHINE_ARN=arn:aws:states:eu-central-1:589498924228:stateMachine:LostifyClaimRecoverySaga"
+  echo "AWS_REGION=eu-central-1"
+  exit 1
+fi
+
+if ! grep -q '^AWS_REGION=' .env; then
+  echo "AWS_REGION=eu-central-1" >> .env
+fi
+
+echo "Restarting item-service..."
+docker compose -f docker-compose.prod.yml up --build -d item-service
+
+echo ""
+echo "=== Done ==="
+echo "1. Ensure IAM role with states:StartExecution is attached to this EC2 instance"
+echo "2. Submit/approve/reject a claim in the app"
+echo "3. Saga panel should show AWS status: RUNNING → SUCCEEDED"
+echo "4. Step Functions console (eu-central-1) should list new executions"

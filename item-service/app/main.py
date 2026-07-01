@@ -14,7 +14,7 @@ from .models import Claim, Item, ItemType
 from .schemas import ClaimCreate, ClaimResponse, ItemCreate, ItemResponse
 from .saga import ClaimRecoverySaga
 from .saga_schemas import SagaStatusResponse
-from .step_functions import trigger_claim_saga
+from .step_functions import get_aws_sync_status, trigger_claim_saga
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,9 @@ def get_saga_status(claim_id: int, db: Session = Depends(get_db)):
     item = db.get(Item, claim.item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return ClaimRecoverySaga.get_status(claim, item)
+    status = ClaimRecoverySaga.get_status(claim, item)
+    status.update(get_aws_sync_status(claim_id))
+    return status
 
 
 @app.get("/claims/{claim_id}", response_model=ClaimResponse)

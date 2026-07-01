@@ -72,6 +72,9 @@ export interface SagaStatus {
   matchedItemId: number | null;
   notifications: string[];
   steps: string[];
+  awsSynced: boolean;
+  awsExecutionArn: string | null;
+  awsExecutionStatus: string;
 }
 
 export const api = {

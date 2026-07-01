@@ -27,17 +27,20 @@ export default function App() {
   }, []);
 
   const syncSaga = useCallback(async (claimId: number) => {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const saga = await api.getSagaStatus(claimId);
         setActiveSaga(saga);
         const eventList = await api.listEvents();
         setEvents(eventList.slice(0, 15));
+        if (saga.awsExecutionStatus === "SUCCEEDED" || saga.awsExecutionStatus === "FAILED") {
+          break;
+        }
       } catch {
         /* saga may not be ready on first tick */
       }
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
+      if (attempt < 4) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   }, []);
@@ -329,6 +332,26 @@ function SagaPanel({ saga, onClose }: { saga: SagaStatus; onClose: () => void })
           </div>
         </div>
       )}
+      <div className="saga-aws-sync">
+        <strong>AWS Step Functions</strong>
+        <div className="saga-aws-row">
+          <span className={`badge aws-badge aws-${saga.awsExecutionStatus.toLowerCase()}`}>
+            {saga.awsExecutionStatus}
+          </span>
+          {saga.awsSynced ? (
+            <span className="aws-sync-ok">Synced with frontend action</span>
+          ) : saga.awsExecutionStatus === "DISABLED" ? (
+            <span className="aws-sync-muted">Not configured on server</span>
+          ) : saga.awsExecutionStatus === "NOT_STARTED" ? (
+            <span className="aws-sync-muted">No execution yet — check EC2 IAM setup</span>
+          ) : (
+            <span className="aws-sync-muted">Execution not linked</span>
+          )}
+        </div>
+        {saga.awsExecutionArn && (
+          <p className="aws-arn">{saga.awsExecutionArn.split(":").slice(-1)[0]}</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -451,3 +451,61 @@ textarea {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+
+.saga-aws-sync {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.saga-aws-sync strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+.saga-aws-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.aws-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.aws-badge.aws-succeeded,
+.aws-badge.aws-running {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+
+.aws-badge.aws-failed,
+.aws-badge.aws-unknown {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+.aws-badge.aws-not_started,
+.aws-badge.aws-disabled {
+  background: rgba(139, 156, 179, 0.2);
+  color: var(--muted);
+}
+
+.aws-sync-ok {
+  color: var(--success);
+}
+
+.aws-sync-muted {
+  color: var(--muted);
+}
+
+.aws-arn {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  word-break: break-all;
+}

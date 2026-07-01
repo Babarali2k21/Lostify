@@ -32,7 +32,8 @@ class TestStepFunctionsTrigger:
         )
 
     @patch.dict("os.environ", {"STEP_FUNCTIONS_STATE_MACHINE_ARN": "arn:aws:states:eu-central-1:1:stateMachine:Test"})
-    def test_starts_execution_with_payload(self):
+    @patch.object(step_functions, "_store_execution")
+    def test_starts_execution_with_payload(self, mock_store):
         step_functions.STATE_MACHINE_ARN = "arn:aws:states:eu-central-1:1:stateMachine:Test"
         mock_client = MagicMock()
         mock_client.start_execution.return_value = {
@@ -62,13 +63,31 @@ class TestStepFunctionsTrigger:
         mock_client.start_execution.return_value = {"executionArn": "arn:exec"}
         step_functions._client = mock_client
 
-        step_functions.trigger_claim_saga(
-            claim_id=5,
-            item_id=6,
-            claimant_user_id=7,
-            matched_item_id=8,
-            decision="PENDING",
-        )
+        with patch.object(step_functions, "_store_execution"):
+            step_functions.trigger_claim_saga(
+                claim_id=5,
+                item_id=6,
+                claimant_user_id=7,
+                matched_item_id=8,
+                decision="PENDING",
+            )
 
         payload = json.loads(mock_client.start_execution.call_args.kwargs["input"])
         assert payload["decision"] == "PENDING"
+
+    def test_get_aws_sync_status_disabled(self):
+        status = step_functions.get_aws_sync_status(1)
+        assert status["awsExecutionStatus"] == "DISABLED"
+        assert status["awsSynced"] is False
+
+    @patch.object(step_functions, "_get_redis")
+    @patch.object(step_functions, "_get_client")
+    def test_get_aws_sync_status_describes_execution(self, mock_get_client, mock_get_redis):
+        step_functions.STATE_MACHINE_ARN = "arn:aws:states:eu-central-1:1:stateMachine:Test"
+        mock_get_redis.return_value.get.return_value = "arn:aws:states:eu-central-1:1:execution:Test:run"
+        mock_get_client.return_value.describe_execution.return_value = {"status": "SUCCEEDED"}
+
+        status = step_functions.get_aws_sync_status(3)
+
+        assert status["awsSynced"] is True
+        assert status["awsExecutionStatus"] == "SUCCEEDED"

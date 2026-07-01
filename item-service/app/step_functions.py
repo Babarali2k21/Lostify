@@ -1,18 +1,23 @@
-"""Fire-and-forget AWS Step Functions executions for claim saga visualization."""
+"""AWS Step Functions integration — auto-trigger and frontend sync status."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+import time
 from typing import Any
+
+import redis
 
 logger = logging.getLogger(__name__)
 
 STATE_MACHINE_ARN = os.getenv("STEP_FUNCTIONS_STATE_MACHINE_ARN", "").strip()
 AWS_REGION = os.getenv("AWS_REGION", "eu-central-1").strip()
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 _client = None
+_redis = None
 
 
 def _get_client():
@@ -22,6 +27,13 @@ def _get_client():
 
         _client = boto3.client("stepfunctions", region_name=AWS_REGION)
     return _client
+
+
+def _get_redis() -> redis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = redis.from_url(REDIS_URL, decode_responses=True)
+    return _redis
 
 
 def is_enabled() -> bool:
@@ -43,7 +55,9 @@ def trigger_claim_saga(
     Returns execution ARN on success, None if disabled or on failure.
     """
     if not is_enabled():
-        logger.debug("Step Functions disabled — set STEP_FUNCTIONS_STATE_MACHINE_ARN to enable")
+        logger.warning(
+            "Step Functions disabled — set STEP_FUNCTIONS_STATE_MACHINE_ARN in .env"
+        )
         return None
 
     payload: dict[str, Any] = {
@@ -63,6 +77,7 @@ def trigger_claim_saga(
             input=json.dumps(payload),
         )
         arn = response["executionArn"]
+        _store_execution(claim_id, arn, decision)
         logger.info(
             "Step Functions started | claimId=%s decision=%s arn=%s",
             claim_id,
@@ -70,18 +85,60 @@ def trigger_claim_saga(
             arn,
         )
         return arn
-    except Exception:
-        logger.exception(
-            "Step Functions start failed | claimId=%s decision=%s",
+    except Exception as exc:
+        logger.error(
+            "Step Functions start failed | claimId=%s decision=%s error=%s",
             claim_id,
             decision,
+            exc,
+        )
+        logger.error(
+            "If 'Unable to locate credentials': attach IAM role to EC2 and set "
+            "metadata hop limit to 2 (run aws/ec2/setup-step-functions-sync.sh)"
         )
         return None
 
 
-def _safe_execution_name(base: str) -> str:
-    """Execution names must be unique; append suffix if name was recently used."""
-    import time
+def get_aws_sync_status(claim_id: int) -> dict[str, Any]:
+    """Return AWS execution sync info for the saga API / frontend panel."""
+    if not is_enabled():
+        return {
+            "awsSynced": False,
+            "awsExecutionArn": None,
+            "awsExecutionStatus": "DISABLED",
+        }
 
+    arn = _get_redis().get(f"sfn:claim:{claim_id}:latest")
+    if not arn:
+        return {
+            "awsSynced": False,
+            "awsExecutionArn": None,
+            "awsExecutionStatus": "NOT_STARTED",
+        }
+
+    try:
+        desc = _get_client().describe_execution(executionArn=arn)
+        status = desc["status"]
+        return {
+            "awsSynced": status in ("RUNNING", "SUCCEEDED"),
+            "awsExecutionArn": arn,
+            "awsExecutionStatus": status,
+        }
+    except Exception as exc:
+        logger.warning("describe_execution failed for %s: %s", arn, exc)
+        return {
+            "awsSynced": False,
+            "awsExecutionArn": arn,
+            "awsExecutionStatus": "UNKNOWN",
+        }
+
+
+def _store_execution(claim_id: int, arn: str, decision: str) -> None:
+    r = _get_redis()
+    r.set(f"sfn:claim:{claim_id}:latest", arn, ex=86400)
+    r.set(f"sfn:claim:{claim_id}:{decision.lower()}", arn, ex=86400)
+
+
+def _safe_execution_name(base: str) -> str:
     safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in base)[:70]
     return f"{safe}-{int(time.time())}"
