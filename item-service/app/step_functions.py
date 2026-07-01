@@ -125,6 +125,14 @@ def get_aws_sync_status(claim_id: int) -> dict[str, Any]:
             "awsExecutionStatus": status,
         }
     except Exception as exc:
+        error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+        if error_code == "AccessDeniedException":
+            # Execution was started; describe needs extra IAM permission
+            return {
+                "awsSynced": True,
+                "awsExecutionArn": arn,
+                "awsExecutionStatus": "STARTED",
+            }
         logger.warning("describe_execution failed for %s: %s", arn, exc)
         return {
             "awsSynced": False,

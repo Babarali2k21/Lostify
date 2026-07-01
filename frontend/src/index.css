@@ -478,7 +478,8 @@ textarea {
 }
 
 .aws-badge.aws-succeeded,
-.aws-badge.aws-running {
+.aws-badge.aws-running,
+.aws-badge.aws-started {
   background: rgba(34, 197, 94, 0.2);
   color: var(--success);
 }

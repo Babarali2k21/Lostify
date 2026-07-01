@@ -91,3 +91,20 @@ class TestStepFunctionsTrigger:
 
         assert status["awsSynced"] is True
         assert status["awsExecutionStatus"] == "SUCCEEDED"
+
+    @patch.object(step_functions, "_get_redis")
+    @patch.object(step_functions, "_get_client")
+    def test_describe_access_denied_returns_started(self, mock_get_client, mock_get_redis):
+        step_functions.STATE_MACHINE_ARN = "arn:aws:states:eu-central-1:1:stateMachine:Test"
+        mock_get_redis.return_value.get.return_value = "arn:aws:states:eu-central-1:1:execution:Test:run"
+
+        class FakeClientError(Exception):
+            def __init__(self):
+                self.response = {"Error": {"Code": "AccessDeniedException"}}
+
+        mock_get_client.return_value.describe_execution.side_effect = FakeClientError()
+
+        status = step_functions.get_aws_sync_status(3)
+
+        assert status["awsSynced"] is True
+        assert status["awsExecutionStatus"] == "STARTED"
