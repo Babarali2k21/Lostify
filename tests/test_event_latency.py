@@ -6,7 +6,7 @@ import uuid
 import httpx
 import pytest
 
-from conftest import ITEM_URL, NOTIF_URL, USER_URL, requires_services
+from conftest import CLAIM_URL, ITEM_URL, NOTIF_URL, requires_services
 
 MAX_LATENCY_MS = 5000  # 5 seconds — generous for local Docker
 
@@ -70,7 +70,7 @@ class TestEventLatency:
 
         before = time.perf_counter()
         client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found_id},
         )

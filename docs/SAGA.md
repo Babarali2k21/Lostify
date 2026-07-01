@@ -1,12 +1,12 @@
 # Phase 3 — Saga Pattern: Claim & Recovery
 
-Lostify uses a **choreography-based saga** to coordinate the claim and recovery flow across the Item Service and Notification Service (via events).
+Lostify uses a **choreography-based saga** coordinated by the **Claim/Recovery Service**. The saga calls Item Service via REST for item state transitions (`reserve`, `release`, `recover`) and publishes events consumed by the Notification Service.
 
 ---
 
 ## State Machines
 
-### Item lifecycle
+### Item lifecycle (Item Service)
 
 ```
 OPEN ──match──► MATCHED ──claim──► RESERVED ──approve──► RECOVERED
@@ -14,7 +14,7 @@ OPEN ──match──► MATCHED ──claim──► RESERVED ──approve─
                                     └──reject (compensate)──► MATCHED
 ```
 
-### Claim lifecycle
+### Claim lifecycle (Claim/Recovery Service)
 
 ```
 PENDING ──approve──► APPROVED
@@ -29,14 +29,14 @@ PENDING ──approve──► APPROVED
 | Step | Action | Item state | Claim state | Event emitted |
 |------|--------|------------|-------------|---------------|
 | 1 | `CreateClaim` | MATCHED | PENDING | — |
-| 2 | `ReserveItem` | RESERVED | PENDING | — |
+| 2 | `ReserveItem` (REST → Item Service) | RESERVED | PENDING | — |
 | 3 | `NotifyClaimCreated` | RESERVED | PENDING | `ClaimCreated` |
 | 4a | `ApproveClaim` | RESERVED | APPROVED | — |
-| 5a | `RecoverItem` | RECOVERED | APPROVED | — |
+| 5a | `RecoverItem` (REST → Item Service) | RECOVERED | APPROVED | — |
 | 6a | `NotifyClaimApproved` | RECOVERED | APPROVED | `ClaimApproved` |
 | 7a | `NotifyItemRecovered` | RECOVERED | APPROVED | `ItemRecovered` |
 | 4b | `RejectClaim` | RESERVED | REJECTED | — |
-| 5b | `CompensateRelease` | MATCHED | REJECTED | — |
+| 5b | `CompensateRelease` (REST → Item Service) | MATCHED | REJECTED | — |
 | 6b | `NotifyClaimRejected` | MATCHED | REJECTED | `ClaimRejected` |
 
 ---
@@ -44,14 +44,14 @@ PENDING ──approve──► APPROVED
 ## Happy Path (Approve)
 
 ```
-SubmitClaim
+SubmitClaim (Claim/Recovery Service)
   → CreateClaim
-  → ReserveItem          (MATCHED → RESERVED)
+  → ReserveItem          (REST: MATCHED → RESERVED)
   → emit ClaimCreated
 
 ApproveClaim
   → ApproveClaim         (PENDING → APPROVED)
-  → RecoverItem          (RESERVED → RECOVERED)
+  → RecoverItem          (REST: RESERVED → RECOVERED)
   → emit ClaimApproved + ItemRecovered
 ```
 
@@ -60,11 +60,11 @@ ApproveClaim
 ```
 SubmitClaim
   → CreateClaim
-  → ReserveItem          (MATCHED → RESERVED)
+  → ReserveItem          (REST: MATCHED → RESERVED)
 
 RejectClaim
   → RejectClaim          (PENDING → REJECTED)
-  → CompensateRelease    (RESERVED → MATCHED)   ← compensation
+  → CompensateRelease    (REST: RESERVED → MATCHED)   ← compensation
   → emit ClaimRejected
 ```
 
@@ -76,11 +76,14 @@ Compensation **undoes** the reserve step so the item can be claimed again.
 
 | File | Role |
 |------|------|
-| `item-service/app/saga.py` | `ClaimRecoverySaga` orchestrator |
-| `item-service/app/state_machine.py` | Valid transition rules |
-| `item-service/app/main.py` | REST endpoints delegate to saga |
+| `claim-recovery-service/app/saga.py` | `ClaimRecoverySaga` orchestrator |
+| `claim-recovery-service/app/item_client.py` | REST client for Item Service |
+| `claim-recovery-service/app/state_machine.py` | Claim transition rules |
+| `claim-recovery-service/app/main.py` | REST endpoints delegate to saga |
+| `item-service/app/state_machine.py` | Item transition rules |
+| `item-service/app/main.py` | Item CRUD + `/items/{id}/reserve\|release\|recover` |
 
-### API endpoints
+### API endpoints (Claim/Recovery Service :8002)
 
 | Method | Path | Saga action |
 |--------|------|-------------|
@@ -88,6 +91,14 @@ Compensation **undoes** the reserve step so the item can be claimed again.
 | POST | `/claims/{id}/approve` | Happy path completion |
 | POST | `/claims/{id}/reject` | Compensation path |
 | GET | `/claims/{id}/saga` | Current saga status (demo) |
+
+### Item Service workflow endpoints (:8001)
+
+| Method | Path | Called by |
+|--------|------|-----------|
+| POST | `/items/{id}/reserve` | Claim/Recovery Service |
+| POST | `/items/{id}/release` | Claim/Recovery Service (compensation) |
+| POST | `/items/{id}/recover` | Claim/Recovery Service |
 
 ### Example saga status response
 
@@ -109,7 +120,7 @@ Compensation **undoes** the reserve step so the item can be claimed again.
 
 ## Phase 4 — AWS Step Functions
 
-The saga is visualized in AWS Step Functions. See [`docs/STEP_FUNCTIONS.md`](../STEP_FUNCTIONS.md).
+The saga is visualized in AWS Step Functions. See [`docs/STEP_FUNCTIONS.md`](STEP_FUNCTIONS.md).
 
 ```
 Start → CreateClaim → ReserveItem → NotifyClaimCreated → Choice

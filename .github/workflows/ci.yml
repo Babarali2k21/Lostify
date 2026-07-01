@@ -27,7 +27,7 @@ jobs:
 
       - name: Run unit tests
         env:
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/notification-service
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/claim-recovery-service:${{ github.workspace }}/notification-service
         run: |
           pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py -v --tb=short
 
@@ -65,7 +65,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/notification-service
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/claim-recovery-service:${{ github.workspace }}/notification-service
         run: |
           pytest tests/test_integration.py tests/test_fault_tolerance.py tests/test_event_latency.py -v --tb=short
 

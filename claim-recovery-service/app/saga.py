@@ -1,8 +1,7 @@
 """
 Claim & Recovery Saga — orchestrates the distributed transaction
-for submitting, approving, or rejecting a claim.
+across Claim/Recovery Service and Item Service.
 
-Pattern: Choreography (each step emits events; no central coordinator).
 Compensation: RejectClaim → ReleaseItem (RESERVED → MATCHED).
 """
 
@@ -13,13 +12,9 @@ from enum import Enum
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .models import Claim, ClaimStatus, Item, ItemStatus
-from .state_machine import (
-    ClaimStateMachine,
-    compensate_release_item,
-    recover_item,
-    reserve_item_for_claim,
-)
+from .item_client import item_client
+from .models import Claim, ClaimStatus
+from .state_machine import ClaimStateMachine
 
 logger = logging.getLogger(__name__)
 
@@ -40,89 +35,75 @@ class SagaStep(str, Enum):
 @dataclass
 class SagaResult:
     claim: Claim
-    item: Item
+    item: dict
     steps: list[SagaStep]
-    outcome: str  # "completed" | "compensated"
+    outcome: str  # "completed" | "compensated" | "in_progress"
 
 
 class ClaimRecoverySaga:
-    """
-    Saga state machines:
-
-        Claim: PENDING → APPROVED | REJECTED
-        Item:  OPEN → MATCHED → RESERVED → RECOVERED
-                              ↘ (compensate) → MATCHED
-    """
-
     @staticmethod
-    def submit_claim(db: Session, item: Item, claimant_user_id: int) -> SagaResult:
-        """Step 1–2: CreateClaim → ReserveItem"""
-        if item.status != ItemStatus.MATCHED:
+    def submit_claim(db: Session, item_id: int, claimant_user_id: int) -> SagaResult:
+        item = item_client.get_item(item_id)
+        if item["status"] != "MATCHED":
             raise HTTPException(
                 status_code=400,
-                detail=f"Item must be MATCHED to submit claim (current: {item.status.value})",
+                detail=f"Item must be MATCHED to submit claim (current: {item['status']})",
             )
 
         steps: list[SagaStep] = []
-
-        claim = Claim(item_id=item.id, claimant_user_id=claimant_user_id)
+        claim = Claim(item_id=item_id, claimant_user_id=claimant_user_id)
         db.add(claim)
         db.commit()
         db.refresh(claim)
         steps.append(SagaStep.CREATE_CLAIM)
-        logger.info("SAGA | CreateClaim | claimId=%s itemId=%s", claim.id, item.id)
+        logger.info("SAGA | CreateClaim | claimId=%s itemId=%s", claim.id, item_id)
 
-        reserve_item_for_claim(db, item)
-        db.refresh(item)
+        item = item_client.reserve_item(item_id)
         steps.append(SagaStep.RESERVE_ITEM)
-        logger.info("SAGA | ReserveItem | itemId=%s status=%s", item.id, item.status.value)
+        logger.info("SAGA | ReserveItem | itemId=%s status=%s", item_id, item["status"])
 
         return SagaResult(claim=claim, item=item, steps=steps, outcome="in_progress")
 
     @staticmethod
-    def approve_claim(db: Session, claim: Claim, item: Item, approver_id: int) -> SagaResult:
-        """Step 3–4: ApproveClaim → RecoverItem (happy path)"""
-        if item.owner_user_id != approver_id:
+    def approve_claim(db: Session, claim: Claim, approver_id: int) -> SagaResult:
+        item = item_client.get_item(claim.item_id)
+        if item["owner_user_id"] != approver_id:
             raise HTTPException(status_code=403, detail="Only item owner can approve claims")
         if claim.status != ClaimStatus.PENDING:
             raise HTTPException(status_code=400, detail="Claim is not PENDING")
 
         steps: list[SagaStep] = []
-
         ClaimStateMachine.transition(claim, ClaimStatus.APPROVED)
         steps.append(SagaStep.APPROVE_CLAIM)
         logger.info("SAGA | ApproveClaim | claimId=%s", claim.id)
 
-        recover_item(db, item)
-        db.refresh(item)
+        item = item_client.recover_item(claim.item_id)
         steps.append(SagaStep.RECOVER_ITEM)
-        logger.info("SAGA | RecoverItem | itemId=%s status=%s", item.id, item.status.value)
+        logger.info("SAGA | RecoverItem | itemId=%s status=%s", claim.item_id, item["status"])
 
         db.commit()
         db.refresh(claim)
         return SagaResult(claim=claim, item=item, steps=steps, outcome="completed")
 
     @staticmethod
-    def reject_claim(db: Session, claim: Claim, item: Item, rejector_id: int) -> SagaResult:
-        """Step 3–4: RejectClaim → CompensateRelease (compensation path)"""
-        if item.owner_user_id != rejector_id:
+    def reject_claim(db: Session, claim: Claim, rejector_id: int) -> SagaResult:
+        item = item_client.get_item(claim.item_id)
+        if item["owner_user_id"] != rejector_id:
             raise HTTPException(status_code=403, detail="Only item owner can reject claims")
         if claim.status != ClaimStatus.PENDING:
             raise HTTPException(status_code=400, detail="Claim is not PENDING")
 
         steps: list[SagaStep] = []
-
         ClaimStateMachine.transition(claim, ClaimStatus.REJECTED)
         steps.append(SagaStep.REJECT_CLAIM)
         logger.info("SAGA | RejectClaim | claimId=%s", claim.id)
 
-        compensate_release_item(db, item)
-        db.refresh(item)
+        item = item_client.release_item(claim.item_id)
         steps.append(SagaStep.COMPENSATE_RELEASE)
         logger.info(
             "SAGA | CompensateRelease | itemId=%s status=%s (RESERVED → MATCHED)",
-            item.id,
-            item.status.value,
+            claim.item_id,
+            item["status"],
         )
 
         db.commit()
@@ -130,8 +111,7 @@ class ClaimRecoverySaga:
         return SagaResult(claim=claim, item=item, steps=steps, outcome="compensated")
 
     @staticmethod
-    def get_status(claim: Claim, item: Item) -> dict:
-        """Return current saga state for demo/API visibility."""
+    def get_status(claim: Claim, item: dict) -> dict:
         if claim.status == ClaimStatus.PENDING:
             saga_state = "AWAITING_DECISION"
         elif claim.status == ClaimStatus.APPROVED:
@@ -144,16 +124,15 @@ class ClaimRecoverySaga:
             "sagaState": saga_state,
             "claimId": claim.id,
             "claimStatus": claim.status.value,
-            "itemId": item.id,
-            "itemStatus": item.status.value,
-            "matchedItemId": item.matched_item_id,
-            "notifications": _notifications_for(claim, item),
+            "itemId": item["id"],
+            "itemStatus": item["status"],
+            "matchedItemId": item.get("matched_item_id"),
+            "notifications": _notifications_for(claim),
             "steps": _steps_for(claim),
         }
 
 
 def _steps_for(claim: Claim) -> list[str]:
-    """Saga steps completed or in progress for this claim."""
     base = ["CreateClaim", "ReserveItem", "NotifyClaimCreated"]
     if claim.status == ClaimStatus.PENDING:
         return base + ["AwaitingDecision"]
@@ -169,8 +148,7 @@ def _steps_for(claim: Claim) -> list[str]:
     return base
 
 
-def _notifications_for(claim: Claim, item: Item) -> list[str]:
-    """Events emitted to Notification Service during this saga."""
+def _notifications_for(claim: Claim) -> list[str]:
     if claim.status == ClaimStatus.PENDING:
         return ["ClaimCreated"]
     if claim.status == ClaimStatus.APPROVED:

@@ -12,16 +12,17 @@ Deploy Lostify to a single **Ubuntu EC2** instance using Docker Compose.
                         ▼
               ┌─────────────────┐
               │  Security Group │
-              │  :8001,:8002,:8003
+              │  :3001,:8001–8003
               └────────┬────────┘
                         │
               ┌─────────▼─────────┐
               │   Ubuntu EC2        │
               │  Docker Compose     │
               │                     │
-              │  user-service :8001 │
-              │  item-service :8002 │
-              │  notification :8003 │
+              │  frontend      :3001 │
+              │  item-service  :8001│  (auth + items)
+              │  claim-recovery:8002│  (claims + saga)
+              │  notification  :8003│
               │  redis (internal)   │
               └─────────────────────┘
 ```
@@ -57,8 +58,9 @@ Redis is **not** exposed publicly in `docker-compose.prod.yml`.
 | Type | Port | Source | Purpose |
 |------|------|--------|---------|
 | SSH | 22 | My IP | SSH access |
-| Custom TCP | 8001 | 0.0.0.0/0 | User Service |
-| Custom TCP | 8002 | 0.0.0.0/0 | Item Service |
+| Custom TCP | 3001 | 0.0.0.0/0 | Frontend (UI + API proxy) |
+| Custom TCP | 8001 | 0.0.0.0/0 | Item Service (auth + items) |
+| Custom TCP | 8002 | 0.0.0.0/0 | Claim/Recovery Service |
 | Custom TCP | 8003 | 0.0.0.0/0 | Notification Service |
 
 > For university demo, `0.0.0.0/0` is fine. For real production, restrict to your IP or use a load balancer.
@@ -127,13 +129,13 @@ This syncs files and runs `deploy.sh` on the server.
 
 ## Step 5 — Verify deployment
 
-On EC2:
+On EC2 (via frontend proxy):
 
 ```bash
 ./aws/ec2/health-check.sh localhost
 ```
 
-From your laptop:
+Direct service ports from your laptop:
 
 ```bash
 curl http://YOUR_EC2_PUBLIC_IP:8001/health
@@ -143,7 +145,9 @@ curl http://YOUR_EC2_PUBLIC_IP:8003/health
 
 Expected:
 ```json
-{"status":"ok","service":"user-service"}
+{"status":"ok","service":"item-service"}
+{"status":"ok","service":"claim-recovery-service"}
+{"status":"ok","service":"notification-service"}
 ```
 
 ---
@@ -155,19 +159,19 @@ Replace `localhost` with your EC2 public IP:
 ```bash
 export EC2_IP=YOUR_EC2_PUBLIC_IP
 
-# Register
+# Register (Item Service :8001)
 curl -X POST http://$EC2_IP:8001/register \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@uni.edu","username":"alice","password":"secret123"}'
 
-# Login
+# Login (Item Service :8001)
 export TOKEN=$(curl -s -X POST http://$EC2_IP:8001/login \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","password":"secret123"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# Create item
-curl -X POST http://$EC2_IP:8002/items \
+# Create item (Item Service :8001)
+curl -X POST http://$EC2_IP:8001/items \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Lost keys","description":"Lost keys near library","item_type":"LOST"}'
@@ -176,7 +180,7 @@ curl -X POST http://$EC2_IP:8002/items \
 Or adapt `scripts/demo.sh`:
 
 ```bash
-USER_URL=http://$EC2_IP:8001 ITEM_URL=http://$EC2_IP:8002 NOTIF_URL=http://$EC2_IP:8003 ./scripts/demo.sh
+ITEM_URL=http://$EC2_IP:8001 CLAIM_URL=http://$EC2_IP:8002 NOTIF_URL=http://$EC2_IP:8003 ./scripts/demo.sh
 ```
 
 ---
@@ -231,11 +235,11 @@ For the MVP demo, **SQLite + console notifications on EC2 is sufficient**.
 
 | Problem | Solution |
 |---------|----------|
-| Connection timed out | Check security group ports 8001–8003 |
+| Connection timed out | Check security group ports 3001 and 8001–8003 |
 | Permission denied (docker) | Run `sudo usermod -aG docker ubuntu` and re-login |
 | Build fails (out of memory) | Use `t3.small` or add 2GB swap |
 | Services not starting | Check logs: `docker compose -f docker-compose.prod.yml logs` |
-| JWT errors between services | Ensure same `JWT_SECRET_KEY` in `.env` for all services |
+| JWT errors between services | Ensure same `JWT_SECRET_KEY` in `.env` for item-service and claim-recovery-service |
 
 ---
 
@@ -260,7 +264,7 @@ Stop the instance when not demoing to save costs.
 | `.env.example` | Environment template |
 | `aws/ec2/setup-server.sh` | Install Docker on Ubuntu |
 | `aws/ec2/deploy.sh` | Build & start on EC2 |
-| `aws/ec2/health-check.sh` | Verify all services |
+| `aws/ec2/health-check.sh` | Verify all services via frontend proxy |
 | `aws/ec2/remote-deploy.sh` | Deploy from local Mac via SSH |
 | `aws/ec2/user-data.sh` | Optional EC2 launch script |
 

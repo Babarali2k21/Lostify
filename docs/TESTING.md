@@ -40,7 +40,7 @@ chmod +x scripts/run-all-tests.sh
 ./scripts/run-all-tests.sh
 
 # Unit only
-PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/notification-service" \
+PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service" \
   pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py -v
 
 # Integration only (Docker must be running)

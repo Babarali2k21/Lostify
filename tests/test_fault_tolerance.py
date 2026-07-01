@@ -16,18 +16,19 @@ from sqlalchemy.orm import sessionmaker
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from conftest import ITEM_URL, NOTIF_URL, REDIS_URL, USER_URL, requires_services
+from conftest import CLAIM_URL, ITEM_URL, NOTIF_URL, REDIS_URL, requires_services
 from shared.events import Event, EventBus, EventType
 
 NOTIF_SERVICE = str(ROOT / "notification-service")
 ITEM_SERVICE = str(ROOT / "item-service")
+CLAIM_SERVICE = str(ROOT / "claim-recovery-service")
 
 
 def _load_notification_consumer():
     for name in list(sys.modules):
         if name == "app" or name.startswith("app."):
             del sys.modules[name]
-    for path in (ITEM_SERVICE,):
+    for path in (ITEM_SERVICE, CLAIM_SERVICE):
         while path in sys.path:
             sys.path.remove(path)
     if NOTIF_SERVICE not in sys.path:
@@ -108,7 +109,7 @@ class TestFaultToleranceIntegration:
         ).json()
 
         claim = client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": item["id"]},
         )
@@ -138,19 +139,19 @@ class TestFaultToleranceIntegration:
         ).json()
 
         claim_id = client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found["id"]},
         ).json()["id"]
 
         first = client.post(
-            f"{ITEM_URL}/claims/{claim_id}/approve",
+            f"{CLAIM_URL}/claims/{claim_id}/approve",
             headers={"Authorization": f"Bearer {token_b}"},
         )
         assert first.status_code == 200
 
         second = client.post(
-            f"{ITEM_URL}/claims/{claim_id}/approve",
+            f"{CLAIM_URL}/claims/{claim_id}/approve",
             headers={"Authorization": f"Bearer {token_b}"},
         )
         assert second.status_code == 400
@@ -179,13 +180,13 @@ class TestFaultToleranceIntegration:
         ).json()
 
         claim_id = client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found["id"]},
         ).json()["id"]
 
         forbidden = client.post(
-            f"{ITEM_URL}/claims/{claim_id}/approve",
+            f"{CLAIM_URL}/claims/{claim_id}/approve",
             headers={"Authorization": f"Bearer {token_a}"},
         )
         assert forbidden.status_code == 403

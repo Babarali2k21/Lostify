@@ -4,10 +4,12 @@ import sys
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "lostify-dev-secret-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./item.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./claim.db")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+ITEM_SERVICE_URL = os.getenv("ITEM_SERVICE_URL", "http://item-service:8001")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+STEP_FUNCTIONS_STATE_MACHINE_ARN = os.getenv("STEP_FUNCTIONS_STATE_MACHINE_ARN", "")
+AWS_REGION = os.getenv("AWS_REGION", "eu-central-1")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 

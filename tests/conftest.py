@@ -4,8 +4,8 @@ import uuid
 import httpx
 import pytest
 
-USER_URL = os.getenv("USER_URL", "http://localhost:8001")
-ITEM_URL = os.getenv("ITEM_URL", "http://localhost:8002")
+ITEM_URL = os.getenv("ITEM_URL", "http://localhost:8001")
+CLAIM_URL = os.getenv("CLAIM_URL", "http://localhost:8002")
 NOTIF_URL = os.getenv("NOTIF_URL", "http://localhost:8003")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -13,7 +13,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 def services_available() -> bool:
     try:
         with httpx.Client(timeout=2.0) as client:
-            for url in (USER_URL, ITEM_URL, NOTIF_URL):
+            for url in (ITEM_URL, CLAIM_URL, NOTIF_URL):
                 if client.get(f"{url}/health").status_code != 200:
                     return False
         return True
@@ -50,17 +50,17 @@ def two_users(client, uid):
         (f"{user_b}@test.edu", user_b),
     ]:
         r = client.post(
-            f"{USER_URL}/register",
+            f"{ITEM_URL}/register",
             json={"email": email, "username": username, "password": password},
         )
         assert r.status_code in (201, 400), r.text
 
     token_a = client.post(
-        f"{USER_URL}/login",
+        f"{ITEM_URL}/login",
         json={"username": user_a, "password": password},
     ).json()["access_token"]
     token_b = client.post(
-        f"{USER_URL}/login",
+        f"{ITEM_URL}/login",
         json={"username": user_b, "password": password},
     ).json()["access_token"]
 

@@ -9,24 +9,12 @@ services:
       timeout: 3s
       retries: 5
 
-  user-service:
-    build:
-      context: ./user-service
-    ports:
-      - "8001:8001"
-    environment:
-      JWT_SECRET_KEY: lostify-dev-secret
-      DATABASE_URL: sqlite:////data/user.db
-      LOG_LEVEL: INFO
-    volumes:
-      - user-data:/data
-
   item-service:
     build:
       context: .
       dockerfile: item-service/Dockerfile
     ports:
-      - "8002:8002"
+      - "8001:8001"
     environment:
       JWT_SECRET_KEY: lostify-dev-secret
       DATABASE_URL: sqlite:////data/item.db
@@ -37,6 +25,26 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  claim-recovery-service:
+    build:
+      context: .
+      dockerfile: claim-recovery-service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      JWT_SECRET_KEY: lostify-dev-secret
+      DATABASE_URL: sqlite:////data/claim.db
+      REDIS_URL: redis://redis:6379/0
+      ITEM_SERVICE_URL: http://item-service:8001
+      LOG_LEVEL: INFO
+    volumes:
+      - claim-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      item-service:
+        condition: service_started
 
   notification-service:
     build:
@@ -60,11 +68,11 @@ services:
     ports:
       - "${FRONTEND_PORT:-3001}:80"
     depends_on:
-      - user-service
       - item-service
+      - claim-recovery-service
       - notification-service
 
 volumes:
-  user-data:
   item-data:
+  claim-data:
   notification-data:

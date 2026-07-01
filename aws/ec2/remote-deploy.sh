@@ -37,4 +37,6 @@ ssh "${SSH_OPTS[@]}" "$REMOTE" "bash ~/Lostify/aws/ec2/health-check.sh localhost
 HOST="${REMOTE#*@}"
 echo ""
 echo "Try from your machine:"
-echo "  curl http://${HOST}:8001/health"
+echo "  curl http://${HOST}:8001/health   # item-service"
+echo "  curl http://${HOST}:8002/health   # claim-recovery-service"
+echo "  curl http://${HOST}:8003/health   # notification-service"

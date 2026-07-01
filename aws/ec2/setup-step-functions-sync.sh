@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time EC2 setup so Docker item-service can call Step Functions (IAM via metadata).
+# One-time EC2 setup so Docker claim-recovery-service can call Step Functions (IAM via metadata).
 set -euo pipefail
 
 echo "=== Lostify Step Functions sync setup ==="
@@ -52,8 +52,8 @@ if ! grep -q '^AWS_REGION=' .env; then
   echo "AWS_REGION=eu-central-1" >> .env
 fi
 
-echo "Restarting item-service and frontend..."
-docker compose -f docker-compose.prod.yml up --build -d item-service frontend
+echo "Restarting claim-recovery-service and frontend..."
+docker compose -f docker-compose.prod.yml up --build -d claim-recovery-service frontend
 
 echo ""
 echo "=== Done ==="

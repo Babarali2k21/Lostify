@@ -11,39 +11,47 @@ services:
       timeout: 3s
       retries: 5
 
-  user-service:
-    build:
-      context: ./user-service
-    ports:
-      - "8001:8001"
-    environment:
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-lostify-change-me-in-production}
-      DATABASE_URL: sqlite:////data/user.db
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    volumes:
-      - user-data:/data
-    restart: unless-stopped
-
   item-service:
     build:
       context: .
       dockerfile: item-service/Dockerfile
     ports:
-      - "8002:8002"
+      - "8001:8001"
     environment:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-lostify-change-me-in-production}
       DATABASE_URL: sqlite:////data/item.db
       REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - item-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  claim-recovery-service:
+    build:
+      context: .
+      dockerfile: claim-recovery-service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-lostify-change-me-in-production}
+      DATABASE_URL: sqlite:////data/claim.db
+      REDIS_URL: redis://redis:6379/0
+      ITEM_SERVICE_URL: http://item-service:8001
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       STEP_FUNCTIONS_STATE_MACHINE_ARN: ${STEP_FUNCTIONS_STATE_MACHINE_ARN:-}
       AWS_REGION: ${AWS_REGION:-eu-central-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
-      - item-data:/data
+      - claim-data:/data
     depends_on:
       redis:
         condition: service_healthy
+      item-service:
+        condition: service_started
     restart: unless-stopped
 
   notification-service:
@@ -69,12 +77,12 @@ services:
     ports:
       - "${FRONTEND_PORT:-3001}:80"
     depends_on:
-      - user-service
       - item-service
+      - claim-recovery-service
       - notification-service
     restart: unless-stopped
 
 volumes:
-  user-data:
   item-data:
+  claim-data:
   notification-data:

@@ -7,8 +7,19 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
+CLAIM_SERVICE = str(ROOT / "claim-recovery-service")
 ITEM_SERVICE = str(ROOT / "item-service")
-sys.path.insert(0, ITEM_SERVICE)
+NOTIF_SERVICE = str(ROOT / "notification-service")
+
+for name in list(sys.modules):
+    if name == "app" or name.startswith("app."):
+        del sys.modules[name]
+
+for path in (ITEM_SERVICE, NOTIF_SERVICE):
+    while path in sys.path:
+        sys.path.remove(path)
+if CLAIM_SERVICE not in sys.path:
+    sys.path.insert(0, CLAIM_SERVICE)
 
 step_functions = importlib.import_module("app.step_functions")
 

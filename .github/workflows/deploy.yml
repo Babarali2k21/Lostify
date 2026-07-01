@@ -31,7 +31,7 @@ jobs:
 
       - name: Run unit tests
         env:
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/notification-service
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/item-service:${{ github.workspace }}/claim-recovery-service:${{ github.workspace }}/notification-service
         run: pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py -v --tb=short
 
   deploy:
@@ -123,10 +123,10 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" \
-            "curl -sf http://localhost:3001/api/user/health && curl -sf http://localhost:3001/api/item/health && curl -sf http://localhost:3001/api/notif/health"
+            "curl -sf http://localhost:3001/api/item/health && curl -sf http://localhost:3001/api/claim/health && curl -sf http://localhost:3001/api/notif/health"
 
       - name: Deployment summary
         run: |
           echo "### Deployed to EC2" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend:** http://${EC2_HOST}:3001" >> $GITHUB_STEP_SUMMARY
-          echo "- **Health:** http://${EC2_HOST}:3001/api/user/health" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health:** http://${EC2_HOST}:3001/api/item/health" >> $GITHUB_STEP_SUMMARY

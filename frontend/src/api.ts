@@ -1,6 +1,6 @@
 // Relative paths — proxied by nginx (Docker) or Vite dev server (local)
-export const USER_API = "/api/user";
 export const ITEM_API = "/api/item";
+export const CLAIM_API = "/api/claim";
 export const NOTIF_API = "/api/notif";
 
 const TOKEN_KEY = "lostify_token";
@@ -79,19 +79,19 @@ export interface SagaStatus {
 
 export const api = {
   register: (email: string, username: string, password: string) =>
-    request<{ id: number; username: string }>(`${USER_API}/register`, {
+    request<{ id: number; username: string }>(`${ITEM_API}/register`, {
       method: "POST",
       body: JSON.stringify({ email, username, password }),
     }),
 
   login: (username: string, password: string) =>
-    request<{ access_token: string }>(`${USER_API}/login`, {
+    request<{ access_token: string }>(`${ITEM_API}/login`, {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
 
   me: () =>
-    request<{ id: number; username: string; email: string }>(`${USER_API}/me`, {}, true),
+    request<{ id: number; username: string; email: string }>(`${ITEM_API}/me`, {}, true),
 
   listItems: () => request<Item[]>(`${ITEM_API}/items`),
 
@@ -107,21 +107,21 @@ export const api = {
 
   submitClaim: (item_id: number) =>
     request<{ id: number; status: string }>(
-      `${ITEM_API}/claims`,
+      `${CLAIM_API}/claims`,
       { method: "POST", body: JSON.stringify({ item_id }) },
       true
     ),
 
   approveClaim: (claimId: number) =>
     request<{ id: number; status: string }>(
-      `${ITEM_API}/claims/${claimId}/approve`,
+      `${CLAIM_API}/claims/${claimId}/approve`,
       { method: "POST" },
       true
     ),
 
   rejectClaim: (claimId: number) =>
     request<{ id: number; status: string }>(
-      `${ITEM_API}/claims/${claimId}/reject`,
+      `${CLAIM_API}/claims/${claimId}/reject`,
       { method: "POST" },
       true
     ),
@@ -130,9 +130,9 @@ export const api = {
 
   listItemClaims: (itemId: number) =>
     request<{ id: number; status: string; claimant_user_id: number }[]>(
-      `${ITEM_API}/items/${itemId}/claims`
+      `${CLAIM_API}/items/${itemId}/claims`
     ),
 
   getSagaStatus: (claimId: number) =>
-    request<SagaStatus>(`${ITEM_API}/claims/${claimId}/saga`, {}, true),
+    request<SagaStatus>(`${CLAIM_API}/claims/${claimId}/saga`, {}, true),
 };

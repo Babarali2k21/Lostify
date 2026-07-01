@@ -10,7 +10,7 @@ echo "  Lostify Phase 7 — Full Test Suite"
 echo "=========================================="
 
 pip install -q -r tests/requirements.txt
-export PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/notification-service"
+export PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service"
 
 echo -e "\n── Unit tests (no Docker required) ──"
 pytest tests/test_events.py tests/test_duplicate_events.py tests/test_saga.py -v --tb=short

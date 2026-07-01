@@ -13,7 +13,7 @@ echo "Generated: $(date -u +"%Y-%m-%d %H:%M UTC")"
 echo ""
 
 echo "## Architecture"
-echo "  - Microservices: user-service, item-service, notification-service"
+echo "  - Microservices: item-service, claim-recovery-service, notification-service"
 echo "  - Database per service: SQLite (PostgreSQL optional via RDS)"
 echo "  - Event bus: Redis pub/sub"
 echo "  - Saga pattern: ClaimRecoverySaga with compensation"
@@ -42,7 +42,7 @@ echo ""
 
 if curl -sf http://localhost:8001/health >/dev/null 2>&1; then
   echo "## Live System Status"
-  for entry in "8001 user-service" "8002 item-service" "8003 notification-service"; do
+  for entry in "8001 item-service" "8002 claim-recovery-service" "8003 notification-service"; do
     port="${entry%% *}"
     svc="${entry#* }"
     if curl -sf "http://localhost:${port}/health" >/dev/null; then

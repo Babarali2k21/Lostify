@@ -39,7 +39,7 @@ Visual orchestration of the Lostify saga using **AWS Step Functions** + **mock L
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-This mirrors the local saga in `item-service/app/saga.py`.
+This mirrors the local saga in `claim-recovery-service/app/saga.py`. Lambdas call Item Service REST endpoints for `reserve`, `release`, and `recover`; claim records live in Claim/Recovery Service.
 
 ---
 
@@ -74,7 +74,7 @@ Creates 5 zip files in `aws/dist/`:
 
 ## Step 2 — Create Lambda functions (AWS Console)
 
-For **each** of the 4 functions:
+For **each** of the 5 functions:
 
 1. Open [AWS Lambda Console](https://console.aws.amazon.com/lambda)
 2. Click **Create function**
@@ -235,12 +235,13 @@ SAGA STEP | CreateClaim | payload={"itemId": 2, ...}
 
 | Local (FastAPI) | Step Functions state | Lambda |
 |-----------------|---------------------|--------|
-| `POST /claims` | CreateClaim + ReserveItem | create-claim, reserve-item |
-| `POST /claims/{id}/approve` | RecoverItem | recover-item |
-| `POST /claims/{id}/reject` | ReleaseItem | release-item |
-| `GET /claims/{id}/saga` | Execution output | — |
+| `POST /claims` (:8002) | CreateClaim + ReserveItem | create-claim, reserve-item |
+| `POST /claims/{id}/approve` (:8002) | RecoverItem | recover-item |
+| `POST /claims/{id}/reject` (:8002) | ReleaseItem | release-item |
+| `GET /claims/{id}/saga` (:8002) | Execution output | — |
+| `POST /items/{id}/reserve\|release\|recover` (:8001) | ReserveItem / ReleaseItem / RecoverItem | reserve-item, release-item, recover-item |
 
-In production, Lambdas would call the Item Service REST API instead of returning mock data.
+In production, Lambdas call the Item Service REST API for item state transitions and the Claim/Recovery Service for claim records instead of returning mock data.
 
 ---
 

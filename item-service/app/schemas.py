@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
-from .models import ClaimStatus, ItemStatus, ItemType
+from .models import ItemStatus, ItemType
 
 
 class ItemCreate(BaseModel):
@@ -21,20 +21,25 @@ class ItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ClaimCreate(BaseModel):
-    item_id: int
+class UserRegister(BaseModel):
+    email: EmailStr
+    username: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=6, max_length=128)
 
 
-class ClaimResponse(BaseModel):
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
     id: int
-    item_id: int
-    claimant_user_id: int
-    status: ClaimStatus
+    email: str
+    username: str
 
     model_config = {"from_attributes": True}
 
 
-class MatchResponse(BaseModel):
-    lost_item_id: int
-    found_item_id: int
-    message: str
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

@@ -6,19 +6,30 @@ from sqlalchemy.orm import Session
 
 from shared.events import Event, EventBus, EventType
 
-from .auth import get_current_user_id
+from .auth import (
+    create_access_token,
+    get_current_user,
+    get_current_user_id,
+    hash_password,
+    verify_password,
+)
 from .config import REDIS_URL
 from .database import Base, engine, get_db
 from .matching import apply_match, find_match
-from .models import Claim, Item, ItemType
-from .schemas import ClaimCreate, ClaimResponse, ItemCreate, ItemResponse
-from .saga import ClaimRecoverySaga
-from .saga_schemas import SagaStatusResponse
-from .step_functions import get_aws_sync_status, trigger_claim_saga
+from .models import Item, ItemType, User
+from .schemas import (
+    ItemCreate,
+    ItemResponse,
+    TokenResponse,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+)
+from .state_machine import compensate_release_item, recover_item, reserve_item_for_claim
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Lostify Item Service", version="1.0.0")
+app = FastAPI(title="Lostify Item Service", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,6 +53,41 @@ def startup():
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "item-service"}
+
+
+@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: UserRegister, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.query(User).filter(User.username == payload.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    user = User(
+        email=payload.email,
+        username=payload.username,
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info("User registered: id=%s username=%s", user.id, user.username)
+    return user
+
+
+@app.post("/login", response_model=TokenResponse)
+def login(payload: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == payload.username).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        logger.warning("Failed login attempt for username=%s", payload.username)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token(user.id, user.username)
+    return TokenResponse(access_token=token)
+
+
+@app.get("/me", response_model=UserResponse)
+def me(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
 @app.post("/items", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
@@ -100,141 +146,34 @@ def get_item(item_id: int, db: Session = Depends(get_db)):
     return item
 
 
-@app.post("/claims", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
-def submit_claim(
-    payload: ClaimCreate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    item = db.get(Item, payload.item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    result = ClaimRecoverySaga.submit_claim(db, item, user_id)
-
-    publish(
-        EventType.CLAIM_CREATED,
-        {
-            "claimId": result.claim.id,
-            "itemId": result.item.id,
-            "claimantUserId": user_id,
-        },
-    )
-    logger.info(
-        "Saga started: claimId=%s steps=%s",
-        result.claim.id,
-        [s.value for s in result.steps],
-    )
-    trigger_claim_saga(
-        claim_id=result.claim.id,
-        item_id=result.item.id,
-        claimant_user_id=user_id,
-        matched_item_id=result.item.matched_item_id,
-        decision="PENDING",
-    )
-    return result.claim
-
-
-@app.post("/claims/{claim_id}/approve", response_model=ClaimResponse)
-def approve_claim(
-    claim_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    claim = db.get(Claim, claim_id)
-    if not claim:
-        raise HTTPException(status_code=404, detail="Claim not found")
-
-    item = db.get(Item, claim.item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    result = ClaimRecoverySaga.approve_claim(db, claim, item, user_id)
-
-    publish(
-        EventType.CLAIM_APPROVED,
-        {"claimId": claim.id, "itemId": item.id, "approvedBy": user_id},
-    )
-    publish(
-        EventType.ITEM_RECOVERED,
-        {"itemId": item.id, "claimId": claim.id, "recoveredBy": claim.claimant_user_id},
-    )
-    logger.info(
-        "Saga completed: claimId=%s steps=%s outcome=%s",
-        claim.id,
-        [s.value for s in result.steps],
-        result.outcome,
-    )
-    trigger_claim_saga(
-        claim_id=claim.id,
-        item_id=item.id,
-        claimant_user_id=claim.claimant_user_id,
-        matched_item_id=item.matched_item_id,
-        decision="APPROVED",
-    )
-    return result.claim
-
-
-@app.post("/claims/{claim_id}/reject", response_model=ClaimResponse)
-def reject_claim(
-    claim_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    claim = db.get(Claim, claim_id)
-    if not claim:
-        raise HTTPException(status_code=404, detail="Claim not found")
-
-    item = db.get(Item, claim.item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    result = ClaimRecoverySaga.reject_claim(db, claim, item, user_id)
-
-    publish(
-        EventType.CLAIM_REJECTED,
-        {"claimId": claim.id, "itemId": item.id, "rejectedBy": user_id},
-    )
-    logger.info(
-        "Saga compensated: claimId=%s steps=%s outcome=%s",
-        claim.id,
-        [s.value for s in result.steps],
-        result.outcome,
-    )
-    trigger_claim_saga(
-        claim_id=claim.id,
-        item_id=item.id,
-        claimant_user_id=claim.claimant_user_id,
-        matched_item_id=item.matched_item_id,
-        decision="REJECTED",
-    )
-    return result.claim
-
-
-@app.get("/items/{item_id}/claims", response_model=list[ClaimResponse])
-def list_item_claims(item_id: int, db: Session = Depends(get_db)):
+@app.post("/items/{item_id}/reserve", response_model=ItemResponse)
+def reserve_item(item_id: int, db: Session = Depends(get_db)):
+    """Called by Claim/Recovery Service during the Saga."""
     item = db.get(Item, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return db.query(Claim).filter(Claim.item_id == item_id).order_by(Claim.id.desc()).all()
+    reserve_item_for_claim(db, item)
+    db.refresh(item)
+    return item
 
 
-@app.get("/claims/{claim_id}/saga", response_model=SagaStatusResponse)
-def get_saga_status(claim_id: int, db: Session = Depends(get_db)):
-    claim = db.get(Claim, claim_id)
-    if not claim:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    item = db.get(Item, claim.item_id)
+@app.post("/items/{item_id}/release", response_model=ItemResponse)
+def release_item(item_id: int, db: Session = Depends(get_db)):
+    """Saga compensation — release reserved item back to MATCHED."""
+    item = db.get(Item, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    status = ClaimRecoverySaga.get_status(claim, item)
-    status.update(get_aws_sync_status(claim_id))
-    return status
+    compensate_release_item(db, item)
+    db.refresh(item)
+    return item
 
 
-@app.get("/claims/{claim_id}", response_model=ClaimResponse)
-def get_claim(claim_id: int, db: Session = Depends(get_db)):
-    claim = db.get(Claim, claim_id)
-    if not claim:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    return claim
+@app.post("/items/{item_id}/recover", response_model=ItemResponse)
+def recover_item_endpoint(item_id: int, db: Session = Depends(get_db)):
+    """Called by Claim/Recovery Service when a claim is approved."""
+    item = db.get(Item, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    recover_item(db, item)
+    db.refresh(item)
+    return item

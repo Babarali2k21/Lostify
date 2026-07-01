@@ -15,8 +15,8 @@ echo "=== Waiting for services ==="
 sleep 12
 
 echo "=== Health checks (via nginx proxy) ==="
-curl -sf http://localhost:3001/api/user/health | python3 -m json.tool
 curl -sf http://localhost:3001/api/item/health | python3 -m json.tool
+curl -sf http://localhost:3001/api/claim/health | python3 -m json.tool
 curl -sf http://localhost:3001/api/notif/health | python3 -m json.tool
 
 echo ""

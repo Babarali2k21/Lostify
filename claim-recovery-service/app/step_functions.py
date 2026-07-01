@@ -48,12 +48,6 @@ def trigger_claim_saga(
     matched_item_id: int | None,
     decision: str,
 ) -> str | None:
-    """
-    Start a Step Functions execution mirroring the frontend claim action.
-
-    decision: PENDING (submit), APPROVED, or REJECTED
-    Returns execution ARN on success, None if disabled or on failure.
-    """
     if not is_enabled():
         logger.warning(
             "Step Functions disabled — set STEP_FUNCTIONS_STATE_MACHINE_ARN in .env"
@@ -92,15 +86,10 @@ def trigger_claim_saga(
             decision,
             exc,
         )
-        logger.error(
-            "If 'Unable to locate credentials': attach IAM role to EC2 and set "
-            "metadata hop limit to 2 (run aws/ec2/setup-step-functions-sync.sh)"
-        )
         return None
 
 
 def get_aws_sync_status(claim_id: int) -> dict[str, Any]:
-    """Return AWS execution sync info for the saga API / frontend panel."""
     if not is_enabled():
         return {
             "awsSynced": False,
@@ -127,7 +116,6 @@ def get_aws_sync_status(claim_id: int) -> dict[str, Any]:
     except Exception as exc:
         error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
         if error_code == "AccessDeniedException":
-            # Execution was started; describe needs extra IAM permission
             return {
                 "awsSynced": True,
                 "awsExecutionArn": arn,

@@ -9,7 +9,7 @@ echo "=== Lostify Local CI ==="
 
 echo -e "\n[1/2] Running tests..."
 pip install -q -r tests/requirements.txt
-PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/notification-service" pytest tests/ -v --tb=short
+PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service" pytest tests/ -v --tb=short
 
 echo -e "\n[2/2] Building Docker images..."
 docker compose -f docker-compose.prod.yml build

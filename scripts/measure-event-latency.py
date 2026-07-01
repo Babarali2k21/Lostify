@@ -8,8 +8,8 @@ import uuid
 
 import httpx
 
-USER_URL = os.getenv("USER_URL", "http://localhost:8001")
-ITEM_URL = os.getenv("ITEM_URL", "http://localhost:8002")
+ITEM_URL = os.getenv("ITEM_URL", "http://localhost:8001")
+CLAIM_URL = os.getenv("CLAIM_URL", "http://localhost:8002")
 NOTIF_URL = os.getenv("NOTIF_URL", "http://localhost:8003")
 
 
@@ -33,11 +33,11 @@ def main():
     with httpx.Client(timeout=10.0) as client:
         for u in (user_a, user_b):
             client.post(
-                f"{USER_URL}/register",
+                f"{ITEM_URL}/register",
                 json={"email": f"{u}@test.edu", "username": u, "password": password},
             )
-        token_a = client.post(f"{USER_URL}/login", json={"username": user_a, "password": password}).json()["access_token"]
-        token_b = client.post(f"{USER_URL}/login", json={"username": user_b, "password": password}).json()["access_token"]
+        token_a = client.post(f"{ITEM_URL}/login", json={"username": user_a, "password": password}).json()["access_token"]
+        token_b = client.post(f"{ITEM_URL}/login", json={"username": user_b, "password": password}).json()["access_token"]
 
         client.post(
             f"{ITEM_URL}/items",
@@ -57,7 +57,7 @@ def main():
         found_id = client.get(f"{ITEM_URL}/items").json()[0]["id"]
         t1 = time.perf_counter()
         client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found_id},
         )

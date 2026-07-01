@@ -28,7 +28,7 @@ Every event follows this JSON structure:
 
 ### 1. ItemCreated
 
-**Publisher:** Item Service  
+**Publisher:** Item Service (:8001)  
 **Trigger:** `POST /items`
 
 ```json
@@ -47,7 +47,7 @@ Every event follows this JSON structure:
 
 ### 2. MatchFound
 
-**Publisher:** Item Service  
+**Publisher:** Item Service (:8001)  
 **Trigger:** Keyword match on item creation
 
 ```json
@@ -65,8 +65,8 @@ Every event follows this JSON structure:
 
 ### 3. ClaimCreated
 
-**Publisher:** Item Service  
-**Trigger:** `POST /claims` — item moves to RESERVED
+**Publisher:** Claim/Recovery Service (:8002)  
+**Trigger:** `POST /claims` — saga reserves item via REST on Item Service
 
 ```json
 {
@@ -83,7 +83,7 @@ Every event follows this JSON structure:
 
 ### 4. ClaimApproved
 
-**Publisher:** Item Service  
+**Publisher:** Claim/Recovery Service (:8002)  
 **Trigger:** `POST /claims/{id}/approve`
 
 ```json
@@ -101,7 +101,7 @@ Every event follows this JSON structure:
 
 ### 5. ClaimRejected
 
-**Publisher:** Item Service  
+**Publisher:** Claim/Recovery Service (:8002)  
 **Trigger:** `POST /claims/{id}/reject` — saga compensation
 
 ```json
@@ -119,8 +119,8 @@ Every event follows this JSON structure:
 
 ### 6. ItemRecovered
 
-**Publisher:** Item Service  
-**Trigger:** Claim approved — item moves to RECOVERED
+**Publisher:** Claim/Recovery Service (:8002)  
+**Trigger:** Claim approved — item recovered via REST on Item Service
 
 ```json
 {
@@ -154,12 +154,12 @@ This prevents duplicate notifications when:
 ## Demo Flow Event Sequence
 
 ```
-ItemCreated (lost)
-ItemCreated (found)
-MatchFound
-ClaimCreated
-ClaimApproved
-ItemRecovered
+ItemCreated (lost)        ← Item Service
+ItemCreated (found)       ← Item Service
+MatchFound                ← Item Service
+ClaimCreated              ← Claim/Recovery Service
+ClaimApproved             ← Claim/Recovery Service
+ItemRecovered             ← Claim/Recovery Service
 ```
 
 Your successful run produced exactly this sequence (6 events).

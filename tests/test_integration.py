@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from conftest import ITEM_URL, NOTIF_URL, USER_URL, requires_services
+from conftest import CLAIM_URL, ITEM_URL, NOTIF_URL, requires_services
 
 
 @requires_services
@@ -40,28 +40,28 @@ class TestIntegrationHappyPath:
         found_id = found_body["id"]
 
         claim = client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found_id},
         )
         assert claim.status_code == 201
         claim_id = claim.json()["id"]
 
-        saga = client.get(f"{ITEM_URL}/claims/{claim_id}/saga")
+        saga = client.get(f"{CLAIM_URL}/claims/{claim_id}/saga")
         if saga.status_code == 404:
-            pytest.skip("Saga endpoint not deployed — rebuild: docker compose up --build -d item-service")
+            pytest.skip("Saga endpoint not deployed — rebuild: docker compose up --build -d claim-recovery-service")
         assert saga.status_code == 200
         assert saga.json()["sagaState"] == "AWAITING_DECISION"
         assert saga.json()["itemStatus"] == "RESERVED"
 
         approved = client.post(
-            f"{ITEM_URL}/claims/{claim_id}/approve",
+            f"{CLAIM_URL}/claims/{claim_id}/approve",
             headers={"Authorization": f"Bearer {token_b}"},
         )
         assert approved.status_code == 200
         assert approved.json()["status"] == "APPROVED"
 
-        final_saga = client.get(f"{ITEM_URL}/claims/{claim_id}/saga")
+        final_saga = client.get(f"{CLAIM_URL}/claims/{claim_id}/saga")
         if final_saga.status_code == 200:
             body = final_saga.json()
             assert body["sagaState"] == "COMPLETED"
@@ -101,20 +101,20 @@ class TestIntegrationRejectPath:
         found_id = found["id"]
 
         claim = client.post(
-            f"{ITEM_URL}/claims",
+            f"{CLAIM_URL}/claims",
             headers={"Authorization": f"Bearer {token_a}"},
             json={"item_id": found_id},
         ).json()
         claim_id = claim["id"]
 
         rejected = client.post(
-            f"{ITEM_URL}/claims/{claim_id}/reject",
+            f"{CLAIM_URL}/claims/{claim_id}/reject",
             headers={"Authorization": f"Bearer {token_b}"},
         )
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "REJECTED"
 
-        saga_resp = client.get(f"{ITEM_URL}/claims/{claim_id}/saga")
+        saga_resp = client.get(f"{CLAIM_URL}/claims/{claim_id}/saga")
         if saga_resp.status_code == 200:
             saga = saga_resp.json()
             assert saga["sagaState"] == "COMPENSATED"

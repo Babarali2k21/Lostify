@@ -1,8 +1,8 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import DateTime, Enum, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
 
@@ -17,12 +17,6 @@ class ItemStatus(str, enum.Enum):
     MATCHED = "MATCHED"
     RESERVED = "RESERVED"
     RECOVERED = "RECOVERED"
-
-
-class ClaimStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
 
 
 class Item(Base):
@@ -42,21 +36,15 @@ class Item(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    claims: Mapped[list["Claim"]] = relationship(back_populates="item")
 
-
-class Claim(Base):
-    __tablename__ = "claims"
+class User(Base):
+    __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
-    claimant_user_id: Mapped[int] = mapped_column(Integer, index=True)
-    status: Mapped[ClaimStatus] = mapped_column(
-        Enum(ClaimStatus), default=ClaimStatus.PENDING
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
-
-    item: Mapped[Item] = relationship(back_populates="claims")

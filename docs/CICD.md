@@ -113,7 +113,7 @@ Any push to `main` (excluding docs-only changes) triggers deploy after tests pas
 1. Runs pytest (pre-deploy gate)
 2. `rsync` project files to `~/Lostify/` on EC2
 3. Runs `aws/ec2/deploy.sh` (docker compose up --build)
-4. Runs health check on all 3 services
+4. Runs health check on all 3 services (via frontend proxy)
 5. Posts deployment summary with URLs
 
 ---
@@ -123,9 +123,9 @@ Any push to `main` (excluding docs-only changes) triggers deploy after tests pas
 After deploy workflow completes:
 
 ```bash
-curl http://YOUR_EC2_IP:8001/health
-curl http://YOUR_EC2_IP:8002/health
-curl http://YOUR_EC2_IP:8003/health
+curl http://YOUR_EC2_IP:8001/health   # item-service
+curl http://YOUR_EC2_IP:8002/health   # claim-recovery-service
+curl http://YOUR_EC2_IP:8003/health   # notification-service
 ```
 
 Or check the **Summary** tab in the GitHub Actions run.
@@ -147,7 +147,7 @@ chmod +x scripts/ci-local.sh
 
 ```bash
 pip install -r tests/requirements.txt
-PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/notification-service" pytest tests/ -v
+PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service" pytest tests/ -v
 ```
 
 Covers:
@@ -162,7 +162,7 @@ docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml config --quiet
 ```
 
-Validates all 3 service Dockerfiles compile successfully.
+Validates all 3 service Dockerfiles (item, claim-recovery, notification) compile successfully.
 
 ### Stage 3 — Deploy (~1–2 minutes)
 

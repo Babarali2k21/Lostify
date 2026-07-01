@@ -18,8 +18,8 @@ check_proxy() {
   fi
 }
 
-check_proxy "user-service" "/api/user"
 check_proxy "item-service" "/api/item"
+check_proxy "claim-recovery-service" "/api/claim"
 check_proxy "notification-service" "/api/notif"
 
 echo ""

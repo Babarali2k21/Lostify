@@ -2,25 +2,37 @@
 
 Event-driven microservices system for university demo.
 
-## Architecture (Phase 1)
+## Architecture
+
+Three microservices plus a React frontend. User authentication is **embedded in Item Service** as application-level auth (register/login/JWT) — not a separate microservice, per course guidance.
 
 ```
-┌─────────────┐     REST      ┌─────────────┐
-│ User Service│◄─────────────►│   Client    │
-│   :8001     │               └─────────────┘
-└─────────────┘                      │
-                                       │ JWT
-┌─────────────┐     REST               ▼
-│ Item Service│◄──────────────────────────
-│   :8002     │
-└──────┬──────┘
-       │ publish
-       ▼
-┌─────────────┐     subscribe   ┌─────────────────────┐
-│    Redis    │────────────────►│ Notification Service│
-│   :6379     │                 │        :8003        │
-└─────────────┘                 └─────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         Frontend (nginx :3001)                           │
+│   /api/item/*  →  item-service:8001                                      │
+│   /api/claim/* →  claim-recovery-service:8002                            │
+│   /api/notif/* →  notification-service:8003                              │
+└──────────────────────────────────────────────────────────────────────────┘
+         │                    │                         │
+         ▼                    ▼                         ▼
+┌─────────────────┐  ┌──────────────────────┐  ┌─────────────────────┐
+│  Item Service   │  │ Claim/Recovery Svc   │  │ Notification Service│
+│     :8001       │◄─│       :8002          │  │        :8003        │
+│                 │  │  REST: reserve/      │  │  Redis subscriber   │
+│ • auth (JWT)    │  │  release/recover     │  │  + deduplication    │
+│ • items/match   │  │ • claims + saga      │  └──────────▲──────────┘
+│ • item states   │  │ • Step Functions     │             │
+└────────┬────────┘  └──────────┬───────────┘             │
+         │ publish              │ publish                  │ subscribe
+         └──────────────────────┴──────────────────────────┘
+                                    │
+                              ┌─────▼─────┐
+                              │   Redis   │
+                              │   :6379   │
+                              └───────────┘
 ```
+
+> **Note:** Per course guidance, user registration and login live inside Item Service as application-level authentication — not as a fourth microservice.
 
 ## Quick Start
 
@@ -31,11 +43,11 @@ docker compose up --build
 
 Wait until all services are healthy, then open **http://localhost:3001** for the web UI.
 
-Or run the demo flow via curl below.
+Or run the demo flow via curl below (direct service ports).
 
 ## Demo Flow (curl)
 
-### 1. Register two users
+### 1. Register two users (Item Service :8001)
 
 ```bash
 # User A (lost item owner)
@@ -49,7 +61,7 @@ curl -s -X POST http://localhost:8001/register \
   -d '{"email":"bob@uni.edu","username":"bob","password":"secret123"}'
 ```
 
-### 2. Login and save JWT tokens
+### 2. Login and save JWT tokens (Item Service :8001)
 
 ```bash
 export TOKEN_ALICE=$(curl -s -X POST http://localhost:8001/login \
@@ -64,19 +76,19 @@ echo "Alice token: $TOKEN_ALICE"
 echo "Bob token: $TOKEN_BOB"
 ```
 
-### 3. Create lost item (Alice)
+### 3. Create lost item (Alice) — Item Service :8001
 
 ```bash
-curl -s -X POST http://localhost:8002/items \
+curl -s -X POST http://localhost:8001/items \
   -H "Authorization: Bearer $TOKEN_ALICE" \
   -H "Content-Type: application/json" \
   -d '{"title":"Black iPhone 14","description":"Lost black iPhone 14 near library","item_type":"LOST"}'
 ```
 
-### 4. Create found item (Bob) → triggers MatchFound event
+### 4. Create found item (Bob) → triggers MatchFound event — Item Service :8001
 
 ```bash
-curl -s -X POST http://localhost:8002/items \
+curl -s -X POST http://localhost:8001/items \
   -H "Authorization: Bearer $TOKEN_BOB" \
   -H "Content-Type: application/json" \
   -d '{"title":"Found iPhone","description":"Found black iPhone 14 near university library","item_type":"FOUND"}'
@@ -84,7 +96,7 @@ curl -s -X POST http://localhost:8002/items \
 
 Check notification-service logs for `MatchFound` notification.
 
-### 5. Submit claim (Alice claims the found item)
+### 5. Submit claim (Alice claims the found item) — Claim/Recovery Service :8002
 
 ```bash
 # Use the FOUND item id from step 4 (usually id=2)
@@ -94,7 +106,7 @@ curl -s -X POST http://localhost:8002/claims \
   -d '{"item_id":2}'
 ```
 
-### 6. Approve claim (Bob, item owner)
+### 6. Approve claim (Bob, item owner) — Claim/Recovery Service :8002
 
 ```bash
 curl -s -X POST http://localhost:8002/claims/1/approve \
@@ -103,7 +115,7 @@ curl -s -X POST http://localhost:8002/claims/1/approve \
 
 Check notification-service logs for `ClaimApproved` and `ItemRecovered`.
 
-### 7. View processed events (duplicate prevention)
+### 7. View processed events (duplicate prevention) — Notification Service :8003
 
 ```bash
 curl -s http://localhost:8003/events/processed
@@ -112,31 +124,47 @@ curl -s http://localhost:8003/events/processed
 ## Health Checks
 
 ```bash
-curl http://localhost:8001/health
-curl http://localhost:8002/health
-curl http://localhost:8003/health
+curl http://localhost:8001/health   # item-service
+curl http://localhost:8002/health   # claim-recovery-service
+curl http://localhost:8003/health   # notification-service
+```
+
+Via frontend proxy:
+
+```bash
+curl http://localhost:3001/api/item/health
+curl http://localhost:3001/api/claim/health
+curl http://localhost:3001/api/notif/health
 ```
 
 ## Services
 
-| Service              | Port | Database   |
-|----------------------|------|------------|
-| **frontend**         | 3001 | —          |
-| user-service         | 8001 | SQLite     |
-| item-service         | 8002 | SQLite     |
-| notification-service | 8003 | SQLite     |
-| Redis (event bus)    | 6379 | —          |
+| Service                  | Port | Database | Responsibility |
+|--------------------------|------|----------|----------------|
+| **frontend**             | 3001 | —        | React UI + API proxy |
+| **item-service**         | 8001 | SQLite   | Auth, items, matching, item state transitions |
+| **claim-recovery-service** | 8002 | SQLite | Claims, saga, compensation, Step Functions sync |
+| **notification-service** | 8003 | SQLite   | Event consumer + deduplication |
+| Redis (event bus)        | 6379 | —        | Pub/sub channel `lostify:events` |
+
+## API paths (frontend proxy)
+
+| Path prefix    | Backend service           |
+|----------------|---------------------------|
+| `/api/item/*`  | item-service:8001         |
+| `/api/claim/*` | claim-recovery-service:8002 |
+| `/api/notif/*` | notification-service:8003 |
 
 ## Project Structure
 
 ```
 Lostify/
 ├── docker-compose.yml
-├── frontend/               # React UI (port 3000)
-├── shared/events/          # Redis event bus + event models
-├── user-service/           # Register, Login, JWT
-├── item-service/           # Items, matching, claims, saga states
-└── notification-service/   # Event consumer + deduplication
+├── frontend/                    # React UI + nginx proxy (port 3001)
+├── shared/events/               # Redis event bus + event models
+├── item-service/                # Auth, items, matching, item states
+├── claim-recovery-service/      # Claims, saga, compensation, Step Functions
+└── notification-service/        # Event consumer + deduplication
 ```
 
 ## Phase 2 — Event System
@@ -147,7 +175,7 @@ See full event catalog: [`docs/EVENTS.md`](docs/EVENTS.md)
 
 ```bash
 pip install -r tests/requirements.txt
-PYTHONPATH="$(pwd):$(pwd)/notification-service" pytest tests/ -v
+PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service" pytest tests/ -v
 ```
 
 ### Test duplicate event handling (live)
@@ -167,18 +195,20 @@ python3 scripts/test_duplicate_events.py
 
 See full saga docs: [`docs/SAGA.md`](docs/SAGA.md)
 
+Claim/Recovery Service orchestrates the saga and calls Item Service via REST (`/items/{id}/reserve`, `/release`, `/recover`).
+
 ### Run saga unit tests
 
 ```bash
-PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/notification-service" pytest tests/ -v
+PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/notification-service" pytest tests/ -v
 ```
 
 ### Demo both saga paths (approve + reject)
 
-Rebuild item-service after code changes, then:
+Rebuild claim-recovery-service after code changes, then:
 
 ```bash
-docker compose up --build -d item-service
+docker compose up --build -d claim-recovery-service
 chmod +x scripts/demo_saga.sh
 ./scripts/demo_saga.sh
 ```
@@ -199,7 +229,7 @@ See full deployment guide: [`docs/STEP_FUNCTIONS.md`](docs/STEP_FUNCTIONS.md)
 # 1. Package mock Lambdas
 cd aws && chmod +x package-lambdas.sh && ./package-lambdas.sh
 
-# 2. Upload zips to AWS Lambda (Console) — 4 functions
+# 2. Upload zips to AWS Lambda (Console) — 5 functions
 # 3. Create state machine from aws/step-functions/claim-recovery-saga.asl.json
 # 4. Run execution with aws/examples/execution-input-approved.json
 ```
