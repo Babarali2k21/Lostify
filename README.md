@@ -20,13 +20,14 @@ Three microservices plus a React frontend. User authentication is **embedded in 
 │     :8001       │◄─│       :8002          │  │        :8003        │
 │                 │  │  REST: reserve/      │  │  Redis subscriber   │
 │ • auth (JWT)    │  │  release/recover     │  │  + deduplication    │
-│ • items/match   │  │ • claims + saga      │  └──────────▲──────────┘
-│ • item states   │  │ • Step Functions     │             │
-└────────┬────────┘  └──────────┬───────────┘             │
+│ • items/match   │  │ • claims + saga      │  └───────────▲─────────┘
+│ • item states   │  │ • Step Functions     │              │
+└────────┬────────┘  └──────────┬───────────┘              │
          │ publish              │ publish                  │ subscribe
          └──────────────────────┴──────────────────────────┘
                                     │
-                              ┌─────▼─────┐
+                                    ▼
+                              ┌───────────┐
                               │   Redis   │
                               │   :6379   │
                               └───────────┘
@@ -182,7 +183,7 @@ PYTHONPATH="$(pwd):$(pwd)/item-service:$(pwd)/claim-recovery-service:$(pwd)/noti
 
 ```bash
 python3 scripts/test_duplicate_events.py
-# Expected: ✅ PASS — Duplicate event was correctly ignored
+# Expected: PASS — Duplicate event was correctly ignored
 ```
 
 ### Demo claim rejection (ClaimRejected + compensation)
