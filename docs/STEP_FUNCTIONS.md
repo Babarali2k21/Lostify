@@ -11,17 +11,17 @@ Visual orchestration of the Lostify saga using **AWS Step Functions** + **mock L
 │              AWS Step Functions: ClaimRecoverySaga              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  START                                                          │
+│   START                                                         │
 │    │                                                            │
 │    ▼                                                            │
-│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐      │
-│  │ CreateClaim │───►│ ReserveItem  │───►│ AwaitDecision │      │
-│  │  (Lambda)   │    │   (Lambda)   │    │   (Choice)    │      │
-│  └─────────────┘    └──────────────┘    └───────┬───────┘      │
-│                                                  │              │
-│                          ┌───────────────────────┴──────┐       │
+│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐       │
+│  │ CreateClaim │───►│ ReserveItem  │───►│ AwaitDecision │       │
+│  │  (Lambda)   │    │   (Lambda)   │    │   (Choice)    │       │
+│  └─────────────┘    └──────────────┘    └───────┬───────┘       │
+│                                                 │               │
+│                          ┌──────────────────────┴───────┐       │
 │                          │                              │       │
-│                    APPROVED                        REJECTED     │
+│                      APPROVED                        REJECTED   │
 │                          │                              │       │
 │                          ▼                              ▼       │
 │                   ┌─────────────┐              ┌─────────────┐  │
@@ -35,7 +35,7 @@ Visual orchestration of the Lostify saga using **AWS Step Functions** + **mock L
 │                   │  (Success)  │              │   ated      │  │
 │                   └─────────────┘              └─────────────┘  │
 │                                                                 │
-│  Any Lambda error ──────────────────────────► SagaFailed (Fail)│
+│  Any Lambda error ──────────────────────────► SagaFailed (Fail) │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

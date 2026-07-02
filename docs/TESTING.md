@@ -132,10 +132,10 @@ See [CICD.md](CICD.md) for pipeline details.
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| 1 | Local microservices MVP | ✅ |
-| 2 | Event system + deduplication | ✅ |
-| 3 | Saga pattern + compensation | ✅ |
-| 4 | AWS Step Functions visualization | ✅ |
-| 5 | EC2 deployment | ✅ |
-| 6 | CI/CD pipeline | ✅ |
-| 7 | Testing & evaluation | ✅ |
+| 1 | Local microservices MVP | Done |
+| 2 | Event system + deduplication | Done |
+| 3 | Saga pattern + compensation | Done |
+| 4 | AWS Step Functions visualization | Done |
+| 5 | EC2 deployment | Done |
+| 6 | CI/CD pipeline | Done |
+| 7 | Testing & evaluation | Done |

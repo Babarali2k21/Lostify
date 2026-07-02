@@ -14,7 +14,7 @@ Automated **test → build → deploy** using GitHub Actions.
                            │                      │
                            ▼                      ▼
                     ┌──────────────┐     ┌─────────────────┐
-                    │ Docker build │     │  All passed ✅  │
+                    │ Docker build │     │  All passed     │
                     │ verification │     └─────────────────┘
                     └──────────────┘
 
@@ -22,8 +22,8 @@ Automated **test → build → deploy** using GitHub Actions.
 │ push main   │────►│ Deploy wf    │────►│  rsync → EC2    │
 │ or manual   │     │ deploy.yml   │     │  docker up      │
 └─────────────┘     └──────────────┘     └────────┬────────┘
-                                                   │
-                                                   ▼
+                                                  │
+                                                  ▼
                                           ┌─────────────────┐
                                           │ Health check    │
                                           │ :8001–8003      │

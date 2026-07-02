@@ -10,21 +10,21 @@ Deploy Lostify to a single **Ubuntu EC2** instance using Docker Compose.
                     Internet
                         │
                         ▼
-              ┌─────────────────┐
-              │  Security Group │
-              │  :3001,:8001–8003
-              └────────┬────────┘
+              ┌───────────────────┐
+              │  Security Group   │
+              │  :3001,:8001–8003 │
+              └────────┬──────────┘
                         │
-              ┌─────────▼─────────┐
-              │   Ubuntu EC2        │
-              │  Docker Compose     │
-              │                     │
+              ┌─────────▼────────────┐
+              │   Ubuntu EC2         │
+              │  Docker Compose      │
+              │                      │
               │  frontend      :3001 │
-              │  item-service  :8001│  (auth + items)
-              │  claim-recovery:8002│  (claims + saga)
-              │  notification  :8003│
-              │  redis (internal)   │
-              └─────────────────────┘
+              │  item-service  :8001 │  (auth + items)
+              │  claim-recovery:8002 │  (claims + saga)
+              │  notification  :8003 │
+              │  redis (internal)    │
+              └──────────────────────┘
 ```
 
 Redis is **not** exposed publicly in `docker-compose.prod.yml`.
